@@ -1,0 +1,234 @@
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+
+
+class SelfAttention(nn.Module):
+    """
+    Canonical implementation of multi-head self attention.
+    """
+
+    def __init__(self, emb, heads=2):
+        """
+        :param emb:
+        :param heads:
+        """
+
+        super().__init__()
+
+        assert emb % heads == 0, f"Embedding dimension ({emb}) should be divisible by nr. of heads ({heads})"
+
+        self.emb = emb
+        self.heads = heads
+
+        # We will break the embedding into `heads` chunks and feed each to a different attention head
+
+        self.tokeys = nn.Linear(emb, emb, bias=False)
+        self.toqueries = nn.Linear(emb, emb, bias=False)
+        self.tovalues = nn.Linear(emb, emb, bias=False)
+
+        self.unifyheads = nn.Linear(emb, emb)
+
+    def forward(self, x, mask=None):
+        b, t, e = x.size()
+        h = self.heads
+        assert e == self.emb, f"Input embedding dim ({e}) should match layer embedding dim ({self.emb})"
+
+        s = e // h
+
+        keys = self.tokeys(x)
+        queries = self.toqueries(x)
+        values = self.tovalues(x)
+
+        keys = keys.view(b, t, h, s)
+        queries = queries.view(b, t, h, s)
+        values = values.view(b, t, h, s)
+
+        # -- We first compute the k/q/v's on the whole embedding vectors, and then split into the different heads.
+        #    See the following video for an explanation: https://youtu.be/KmAISyVvE1Y
+
+        # Compute scaled dot-product self-attention
+
+        # - fold heads into the batch dimension
+        keys = keys.transpose(1, 2).contiguous().view(b * h, t, s)
+        queries = queries.transpose(1, 2).contiguous().view(b * h, t, s)
+        values = values.transpose(1, 2).contiguous().view(b * h, t, s)
+
+        queries = queries / (e ** (1 / 4))
+        keys = keys / (e ** (1 / 4))
+        # - Instead of dividing the dot products by sqrt(e), we scale the keys and values.
+        #   This should be more memory efficient
+
+        # - get dot product of queries and keys, and scale
+        dot = torch.bmm(queries, keys.transpose(1, 2))
+
+        if mask is not None:
+            # expand the mask to match tensor dims
+            mask = mask.unsqueeze(1).unsqueeze(2)
+            mask = mask.expand(b, h, 1, t).reshape(b * h, 1, t)
+
+            # replace the False values with -inf
+            dot = dot.masked_fill(~mask, float("-1e7"))
+
+        # print(dot)
+        dot = F.softmax(dot, dim=2)
+
+        # - dot now has row-wise self-attention probabilities
+
+        # apply the self attention to the values
+        out = torch.bmm(dot, values).view(b, h, t, s)
+
+        # swap h, t back, unify heads
+        out = out.transpose(1, 2).contiguous().view(b, t, s * h)
+
+        return self.unifyheads(out)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, emb, heads, ff_hidden_mult=6, dropout=0.0):
+        super().__init__()
+
+        self.attention = SelfAttention(emb, heads=heads)
+
+        self.norm1 = nn.LayerNorm(emb)
+        self.norm2 = nn.LayerNorm(emb)
+
+        self.ff = nn.Sequential(nn.Linear(emb, ff_hidden_mult * emb), nn.ReLU(), nn.Linear(ff_hidden_mult * emb, emb))
+
+        self.do = nn.Dropout(dropout)
+
+    def forward(self, x, mask=None):
+        attended = self.attention(x, mask=mask)
+        x = self.norm1(attended + x)
+        x = self.do(x)
+        fedforward = self.ff(x)
+        x = self.norm2(fedforward + x)
+        x = self.do(x)
+        return x
+
+
+class Transformer(nn.Module):
+    """
+    Transformer for classifying sequences
+    """
+
+    def __init__(self, emb, heads, depth, ff_hidden_mult=4, dropout=0.0):
+        """
+        :param emb: Embedding dimension
+        :param heads: nr. of attention heads
+        :param depth: Number of transformer blocks
+        :param ff_hidden_mult: Hidden layer dimension in feedforward network, as a fraction of `emb`
+        """
+        super().__init__()
+
+        self.tblocks = nn.ModuleList([TransformerBlock(emb=emb, heads=heads, ff_hidden_mult=ff_hidden_mult, dropout=dropout) for _ in range(depth)])
+        self.do = nn.Dropout(dropout)
+
+    def forward(self, x, mask=None):
+        """
+        :param x: A batch by sequence length integer tensor of token indices.
+        :return: predicted log-probability vectors for each token based on the preceding tokens.
+        """
+
+        x = self.do(x)
+        for tblock in self.tblocks:
+            x = tblock(x, mask)
+
+        return x
+    
+    import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import pytorch_lightning as pl
+import math
+
+
+class TimePositionalEncoding(nn.Module):
+    """ Time encodings for Transformer. 
+    """
+
+    def __init__(self, d_emb):
+        """
+        Inputs
+            d_emb - Dimensionality when projecting to the fourier feature basis.
+        """
+        super().__init__()
+        self.d_emb = d_emb
+
+    def forward(self, t):
+        pe = torch.zeros(t.shape[0], t.shape[1], self.d_emb).to(t.device)  # (B, T, D)
+        div_term = torch.exp(torch.arange(0, self.d_emb, 2).float() * (-math.log(10000.0) / self.d_emb))[None, None, :].to(t.device)  # (1, 1, D / 2)
+        t = t.unsqueeze(2)  # (B, 1, T)
+        pe[:, :, 0::2] = torch.sin(t * div_term)  # (B, T, D / 2)
+        pe[:, :, 1::2] = torch.cos(t * div_term)  # (B, T, D / 2)
+        return pe  # (B, T, D)
+
+class TransformerWithTimeEmbeddings(nn.Module):
+    """ Transformer encoder.
+    """
+
+    def __init__(self, n_out=1, **kwargs):
+        """
+        :param n_out: Number of outputs per sequence element (e.g., number of bands).
+        :param kwargs: Transformer arguments.
+        """
+        super().__init__()
+        
+        self.embedding_mag = nn.Linear(in_features=n_out, out_features=kwargs['emb'])
+        self.embedding_t = TimePositionalEncoding(kwargs['emb'])
+        self.transformer = Transformer(**kwargs)
+        self.projection = nn.Linear(in_features=kwargs['emb'], out_features=n_out)
+
+    def forward(self, x, t, mask=None):
+        """
+        :param x: Input sequence (B, T, 1).
+        :param t: Time sequence (B, T).
+        :param mask: Padding mask (B, T).
+        :return: Output sequence (B, T, n_out).
+        """
+        t = t - t[:, 0].unsqueeze(1)  # (B, T)  # Relative time
+        t_emb = self.embedding_t(t)  # (B, T, D)  # Project to embedding dimension of transformer
+        x = self.embedding_mag(x) + t_emb  # (B, T, D)  # Add time embeddings to magnitude embeddings
+        x = self.transformer(x, mask)  # (B, T, D)  # Transformer
+        x = self.projection(x)  # (B, T, n_out)  # Project each sequence element (independently) to output dim
+
+        return x
+
+class TransformerClassifier(nn.Module):
+    """ Transformer classifier.
+    """
+
+    def __init__(self, transformer_kwargs, input_dim=1350, hidden_dim=50, num_classes=8, **kwargs):
+        """
+        :param n_out: Number of outputs per sequence element (e.g., number of bands).
+        :param kwargs: Transformer arguments.
+        """
+        super().__init__()
+        
+        self.transformer_time = TransformerWithTimeEmbeddings(**transformer_kwargs)
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        #self.conv1 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, stride=1)
+        self.fc2 = nn.Linear(hidden_dim, num_classes)
+        
+
+    def forward(self, x, t, mask=None):
+        """
+        :param x: Input sequence (B, T, 1).
+        :param t: Time sequence (B, T).
+        :param mask: Padding mask (B, T).
+        :return: Output sequence (B, T, n_out).
+        """
+        x = x[..., None]
+        x = self.transformer_time(x, t, mask)
+        
+        x = x.squeeze()
+        
+        x = self.fc1(x)
+        x = F.relu(x)
+        
+        #x = self.conv1(x)
+        
+        x = self.fc2(x)
+        x = F.softmax(x, dim=1)
+
+        return x
