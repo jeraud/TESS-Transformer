@@ -1,0 +1,37 @@
+Version 1: 
+    lr=6e-4, transformer_kwargs={"emb":64, "heads":4, "layers":5, "dropout_p":0.05, "hidden":256}
+    after 150 epochs: {'test_loss_epoch': 11.133434295654297, 'test_acc_epoch': 0.9034090638160706}
+        on a hidden 19% of data
+    error making confusion matrix
+    experimented with different emb, hidden, dropout, epochs, best results above
+    To Do: fix confusion matrix error
+            learning rate scheduler
+            experiment with different architecture, change layers, heads, transformer, convolution, feed forward
+    
+    lr=6e-4, transformer_kwargs={"emb":64, "heads":8, "layers":5, "dropout_p":0.075, "hidden":256}
+    after 250 epochs: {'test_loss_epoch': 10.994000434875488, 'test_acc_epoch': 0.9097222089767456}
+    confusion matrix: /Users/paul/Desktop/UROP/confusion_matrix_8heads250epochs.png
+
+Version 2:
+    CNN feed forward instead of fully connected in encoder
+    lr=6e-4, transformer_kwargs={"emb":64, "heads":8, "layers":5, "dropout_p":0.075, "hidden":256}
+    250 epochs: {'test_loss_epoch': 11.063982963562012, 'test_acc_epoch': 0.9166666865348816}
+
+Version 3:
+    2 layer LSTM added to conformer after MHSA, 32 kernel size for CNN conformer layer
+    lr=6e-4, transformer_kwargs={"emb":64, "heads":8, "layers":5, "dropout_p":0.1, "hidden":256}
+    100 epochs: {'test_loss_epoch': 10.94936466217041, 'test_acc_epoch': 0.9154040217399597}
+    lr=6e-4, transformer_kwargs={"emb":64, "heads":8, "layers":3, "dropout_p":0.5, "hidden":256}
+    100 epochs: {'test_loss_epoch': 11.077142715454102, 'test_acc_epoch': 0.9172979593276978}
+    91.1% after 75 epochs but with much better on contact_rot with bidirectional LSTM
+
+Version 4:
+    BiLSTM, PE once before conformer layers as well as during layers, additional long range CNN added
+    lr=6e-4, weight_decay=1e-5, transformer_kwargs={"emb":64, "heads":8, "layers":3, "dropout_p":0.075, "hidden":256}
+    50 epochs: {'test_loss_epoch': 10.973389625549316, 'test_acc_epoch': 0.9185606241226196}
+
+Version 5:
+    Tensor passed seperately to BiLSTM, Transformer, then added, norm, CNN, also adjusted embedding NN to be 1 Linear layer
+    lr=6e-4, weight_decay=1e-5, transformer_kwargs={"emb":64, "heads":8, "layers":3, "dropout_p":0.3, "hidden":256}
+    150 epochs, saving best val acc model: {'test_loss_epoch': 10.945816040039062, 'test_acc_epoch': 0.931186854839325}
+    500 epochs, same as above: {'test_loss_epoch': 10.84488582611084, 'test_acc_epoch': 0.9387626051902771}
