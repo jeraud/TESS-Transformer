@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from feed_forward import FeedForward
-from convolution import simple_convolution_layer, gated_colvolution_layer
+from convolution import simple_convolution_layer, gated_convolution_layer
 from multi_head_attention import Transformer
 from alternative_transformer import TransformerWithTimeEmbeddings
 
@@ -35,7 +35,7 @@ class ConformerBlock(nn.Module):
         self.dims = transformerargs['emb']
         self.feed_forward = FeedForward(transformerargs['emb']).to('mps')
         self.mhsa = TransformerWithTimeEmbeddings(**transformerargs).to('mps')
-        self.gated_conv = gated_colvolution_layer(transformerargs['emb']).to('mps')
+        self.gated_conv = gated_convolution_layer(transformerargs['emb']).to('mps')
         self.norm_ff = post_normalize(self.dims, self.feed_forward, True).to('mps')
         self.norm_conv = post_normalize(self.dims, self.gated_conv).to('mps')
         self.norm_mhsa = post_normalize2(self.dims, self.mhsa).to('mps')

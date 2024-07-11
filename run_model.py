@@ -4,43 +4,31 @@ sys.path.append('./')
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import math
-
+import numpy
 
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from torch.utils.data import TensorDataset, DataLoader, random_split, Subset
-from lightning.pytorch.loggers import WandbLogger
 
 from torchmetrics.classification import MulticlassConfusionMatrix
 
 from sklearn.model_selection import train_test_split
-
-import wandb
+from pytorch_lightning.callbacks import Callback
 
 import utils
 
-# from wave_scat_conformer import WaveScatFormer
 from light_curve_classifier import LightCurveClassifier
-# def text_file_to_matrix(file_path, delimiter=','):
-#     with open(file_path, 'r') as file:
-#         # Read all lines from the file
-#         lines = file.readlines()
-        
-#         # Split each line into values and convert to float
-#         matrix = [list(map(float, line.strip().split(delimiter))) for line in lines]
-        
-#     return torch.tensor(matrix)
 
-# input = text_file_to_matrix('/Users/paul/Downloads/keplerq9v3/APERIODIC/001026895.txt', delimiter=None)
-# print(input.shape)
-# mask =torch.isnan(input).any(dim=1)
-# input = input[~mask]
-# former = WaveScatFormer(512, 4)
-# print(former(input.unsqueeze(0)))
+class AccuracyLogger(Callback):
+    def __init__(self):
+        self.val_acc = []
+
+    def on_validation_end(self, trainer, pl_module):
+        self.val_acc.append(trainer.callback_metrics['val_acc'].item())
+
 def main():
-        DIR_LIGHT_CURVES = "/Users/paul/Downloads/keplerq9v3/lightcurves/"
+        DIR_LIGHT_CURVES = "/Users/paul/Downloads/keplerq9v3/lightcurves"
         pl.seed_everything(42, workers=True)
 
         #### Read in light curves for training
@@ -55,7 +43,7 @@ def main():
         filename_list = os.listdir(DIR_LIGHT_CURVES)
         idx = 0
         for i, filename in enumerate(filename_list):
-            print(f"{i} of {len(filename_list)}")
+            # print(f"{i} of {len(filename_list)}")
             if filename.endswith(".txt"):
                 df = utils.open_light_curve_csv(filename, DIR_LIGHT_CURVES)
                 # If less than n_max_obs observations, pad with zeros
@@ -73,17 +61,16 @@ def main():
 
 
         # Standardize fluxes
-        # flux_means = np.median(flux, axis=1)
-        # flux_stds = np.std(flux, axis=1)
         for i in range(flux.shape[0]):
             flux[i] = (flux[i] - np.median(flux[i])) / np.std(flux[i])
 
 
 
         # plot example light curve
-        plt.figure()
-        plt.scatter(time[0], flux[0])
-        plt.savefig('temp.png')
+        # plt.figure()
+        # plt.scatter(time[0], flux[0])
+        # plt.savefig('temp.png')
+        # plt.close()
 
         # Convert to torch tensors
         flux = torch.Tensor(flux)
@@ -107,25 +94,20 @@ def main():
 
         # Get class populations for weighted loss
         total = labels.sum()
-        # print(total)
-        # print(labels.sum(axis=0))
+ 
         class_weights =  total / labels.sum(axis=0)
-        # print('w',class_weights)
-        # print(flux.shape)
-        # former = LightCurveClassifier(512,5)
-        # print(LightCurveClassifier(flux))
-        # Set up Transformer classifier
-        mlce = LightCurveClassifier(lr=6e-4, transformer_kwargs={"emb":64, "heads":4, "layers":4, "dropout_p":0.05, "hidden":256},optimizer_kwargs={}, num_classes=8, class_weights=class_weights)
+
+        # initialize classifier
+        mlce = LightCurveClassifier(lr=6e-4, transformer_kwargs={"emb":64, "heads":8, "layers":3, "dropout_p":0.3, "hidden":256},optimizer_kwargs={}, num_classes=8, class_weights=class_weights)
         
         nobjects = flux.shape[0]
-        val_fraction = 0.05
-        test_fraction = 0.05
+        val_fraction = 0.1
+        test_fraction = 0.19
         batch_size = 32
         n_samples_test = int(test_fraction * nobjects)
         n_samples_val = int(val_fraction * nobjects)
 
         dataset = TensorDataset(flux, time, labels, mask)
-        # print(dataset)
 
         train_val_idx, test_idx = train_test_split(np.arange(len(dataset)), test_size=n_samples_test,random_state=42, shuffle=True, stratify=labels)
         train_idx, validation_idx = train_test_split(train_val_idx, test_size=n_samples_val,random_state=42, shuffle=True, stratify=labels[train_val_idx])
@@ -135,45 +117,60 @@ def main():
         dataset_test = Subset(dataset, test_idx)
 
 
-        train_loader = DataLoader(dataset_train, batch_size=batch_size, num_workers=8, pin_memory=True, shuffle=True)
-        val_loader = DataLoader(dataset_val, batch_size=batch_size, num_workers=8, pin_memory=True, shuffle=False)
-        test_loader = DataLoader(dataset_test, batch_size=batch_size, num_workers=8, pin_memory=True, shuffle=False)
-        # print(former(flux[0].unsqueeze(0)))
-        # Non-stratified sampler
-        dataset_train, dataset_val = random_split(dataset, [flux.shape[0] - n_samples_val, n_samples_val])
-        train_loader = DataLoader(dataset_train, batch_size=batch_size, num_workers=8, pin_memory=True, shuffle=True)
-        val_loader = DataLoader(dataset_val, batch_size=batch_size, num_workers=8, pin_memory=True, shuffle=False)
+        train_loader = DataLoader(dataset_train, batch_size=batch_size, num_workers=2, pin_memory=True, shuffle=True)
+        val_loader = DataLoader(dataset_val, batch_size=batch_size, num_workers=2, pin_memory=True, shuffle=False)
+        test_loader = DataLoader(dataset_test, batch_size=batch_size, num_workers=2, pin_memory=True, shuffle=False)
 
         print(torch.cuda.is_available())
 
-        # Initialize wandb logger
-        # wandb_logger = WandbLogger(project='wandb-lightning', job_type='train')
-
         # Initialize Callbacks
-        early_stop_callback = pl.callbacks.EarlyStopping(monitor="val_acc", patience=10)
-        checkpoint_callback = pl.callbacks.ModelCheckpoint()
+        early_stop_callback = pl.callbacks.EarlyStopping(monitor="val_acc", stopping_threshold=0.93)
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="val_acc", save_top_k=1, mode="max")
+        accuracy_logger = AccuracyLogger()
 
-        trainer = pl.Trainer(max_epochs=50,
-                             accelerator='gpu',
-                             # logger=wandb_logger,
-                             callbacks=[early_stop_callback,checkpoint_callback,])
-
+        trainer = pl.Trainer(max_epochs=150,
+                            min_epochs=100,
+                             accelerator='auto',
+                             devices='auto',
+                            #  num_nodes=1,
+                            #  strategy= 'ddp',
+                             callbacks=[early_stop_callback,checkpoint_callback, accuracy_logger])
+        print('starting training')
         trainer.fit(model=mlce, train_dataloaders=train_loader, val_dataloaders=val_loader)
-
         trainer.save_checkpoint("cl_model.ckpt")
 
-        # Close wandb run
-        # wandb.finish()
+        print(trainer.test(dataloaders=test_loader))
 
-        # print(mlce.test_step(test_loader,test_idx))
-        #Make confusion matrix
-        preds = mlce(flux[test_idx], time[test_idx])
-        metric = MulticlassConfusionMatrix(num_classes=8)
-        labe = labels_onehot[test_idx]
-        # metric(preds,labe)
+        # plot validation accuracy
+        epochs = range(1, len(accuracy_logger.val_acc) + 1)
+        plt.plot(epochs, accuracy_logger.val_acc, 'b', label='Validation accuracy')
+        plt.title('Validation Accuracy During Training')
+        plt.xlabel('Epochs')
+        plt.ylabel('Validation Accuracy')
+        plt.savefig('val_acc.png')
+        plt.close()
+
+        # make confusion matrix
+        metric = mlce.conf_matrix.to('cuda')
         fig_, ax_ = metric.plot(labels=['APERIODIC', 'CONSTANT', 'CONTACT_ROT', 'DSCT_BCEP', 'ECLIPSE', 'GDOR_SPB', 'RRLYR_CEPH', 'SOLARLIKE'])
         plt.savefig('confusion_matrix.png')
         plt.close()
+
+        # plot misclassifications
+        names = ['APERIODIC', 'CONSTANT', 'CONTACT_ROT', 'DSCT_BCEP', 'ECLIPSE', 'GDOR_SPB', 'RRLYR_CEPH', 'SOLARLIKE']
+        for missede in enumerate(mlce.testmc):
+            missed = missede[1]
+            print(missed[0].shape, missed[1].shape)
+            data = (missed[1], missed[0])
+            pred = missed[2].item()
+            actual = torch.nonzero(missed[3] == 1).squeeze().item()
+            plt.plot(data[0].cpu(), data[1].cpu())
+            plt.title('predicted ' + names[pred] + ', was ' + names[actual])
+            plt.xlabel('time')
+            plt.ylabel('flux')
+            file_path = os.path.join('missclassified_curves', 'missed_curve' + str(missede[0]))
+            plt.savefig(file_path)
+            plt.close()
         
 
 if __name__ == '__main__':
