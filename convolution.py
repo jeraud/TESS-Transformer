@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class gated_colvolution_layer(nn.Module):
+class gated_convolution_layer(nn.Module):
     def __init__(self, dims, dropout_p=0.3, kernel_size = 3, stride = 1, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pointwise1 = nn.Conv1d(dims,4*dims,kernel_size=1, bias=False)

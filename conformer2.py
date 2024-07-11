@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from multi_head_attention import TransformerLayer
-from convolution import gated_colvolution_layer
+from convolution import gated_convolution_layer
 import torch.nn.functional as F
 
 
@@ -9,7 +9,7 @@ class Conformer(nn.Module):
     def __init__(self, emb_d, num_heads, dropout_p, ffn_d):
         super(Conformer, self).__init__()
         self.MHSA = TransformerLayer(emb_d=emb_d, ffn_d=ffn_d, num_heads=num_heads, dropout_p=dropout_p)
-        self.conv = gated_colvolution_layer(emb_d, dropout_p=dropout_p)
+        self.conv = gated_convolution_layer(emb_d, dropout_p=dropout_p)
         self.norm1 = nn.LayerNorm(normalized_shape=emb_d)
         self.lstm = nn.LSTM(emb_d,int(emb_d/2), batch_first=True, dropout=dropout_p, num_layers=2, bidirectional=True)
         self.norm2 = nn.LayerNorm(normalized_shape=emb_d)
