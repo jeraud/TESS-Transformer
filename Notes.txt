@@ -35,3 +35,37 @@ Version 5:
     lr=6e-4, weight_decay=1e-5, transformer_kwargs={"emb":64, "heads":8, "layers":3, "dropout_p":0.3, "hidden":256}
     150 epochs, saving best val acc model: {'test_loss_epoch': 10.945816040039062, 'test_acc_epoch': 0.931186854839325}
     500 epochs, same as above: {'test_loss_epoch': 10.84488582611084, 'test_acc_epoch': 0.9387626051902771}
+
+Version 6:
+    check slides
+
+Version 7: 
+    BiLSTM expands dims, passed through cnn to reduce dims, added to mhsa before resid conn cnn
+    lr = 5e-4, transformer_kwargs={"emb":64, "heads":16, "layers":3, "dropout_p":0.3, "hidden":256}
+
+Name Idea: Stellar ConvLAttifier
+CONVolutionLstmATTention
+
+Version 8:
+    lstm with cnn, 8 heads, dding after cnn resid:   
+    {'test_loss_epoch': 11.514869689941406, 'test_acc_epoch': 0.8720703125}
+    before mhsa:
+    {'test_loss_epoch': 11.427141189575195, 'test_acc_epoch': 0.8720703125}
+    same as kepler model but with tess CNN
+    390 epochs: {'test_loss_epoch': 11.451822280883789, 'test_acc_epoch': 0.8681640625}
+
+Version 9:
+    x = x + lstm/conv(x) + norm, x = mhsa(x), x = x + conv(x) + norm
+    no norm in embedding layer, 64->20->8 output layer
+    data: remove outliers, nans, subtract gaussian blur, normalize, shift time to start from 0
+    RAdam, weight decay = 1e-5
+    lr=1e-4, transformer_kwargs={"emb":64, "heads":8, "layers":3, "dropout_p":0.2, "hidden":256}
+    700 epochs: {'test_loss_epoch': 11.415507316589355, 'test_acc_epoch': 0.8828125}
+    adding in 580 rrlyr_cepheids from tessv2_yeschen to training set:
+    700 epochs: {'test_loss_epoch': 11.223922729492188, 'test_acc_epoch': 0.8767730593681335}
+    using AdamW, saving top 13 models, testing all, saving best: 
+    700 epochs: {'test_loss_epoch': 11.177895545959473, 'test_acc_epoch': 0.8787878751754761}
+    Adding dropout before output layer, layer norm after first fc at dim 20:
+    300 epochs: test_acc_epoch         0.8829966187477112  test_loss_epoch        11.194835662841797
+    Adding more norm before softmax:
+    700 epochs: test_acc_epoch         0.8838383555412292  test_loss_epoch        11.332634925842285

@@ -13,7 +13,6 @@ def scaled_dot_prod(q,k,v,mask=None):
     attention = torch.matmul(soft, v)
     return attention
 
-
 class TimePositionalEncoding(nn.Module):
     """ Time encodings for Transformer. 
     """
@@ -94,7 +93,3 @@ class TransformerLayer(nn.Module):
         x = self.cffn(x)
         x = self.norm2(x + residual_x)
         return x
-
-
-    
-

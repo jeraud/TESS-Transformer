@@ -20,6 +20,7 @@ import utils
 
 from light_curve_classifier import LightCurveClassifier
 
+# from read_tess_data import get_tess_data
 class AccuracyLogger(Callback):
     def __init__(self):
         self.val_acc = []
@@ -76,7 +77,6 @@ def main():
         flux = torch.Tensor(flux)
         time = torch.Tensor(time)
         mask = torch.Tensor(mask).to(torch.bool)
-
         # Read in light curve ordering
         ls = os.listdir(DIR_LIGHT_CURVES)
         df_ls = pd.DataFrame(ls, columns=['filename'])
@@ -91,7 +91,7 @@ def main():
         
         labels_onehot = pd.get_dummies(labels['class']).to_numpy()
         labels = torch.Tensor(labels_onehot)
-
+        
         # Get class populations for weighted loss
         total = labels.sum()
  
