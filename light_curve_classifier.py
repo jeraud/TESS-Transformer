@@ -22,6 +22,8 @@ class LightCurveClassifier(pl.LightningModule):
         self.conf_matrix = MulticlassConfusionMatrix(num_classes=num_classes)
         self.classifier = LCC(transformer_kwargs['emb'],transformer_kwargs['heads'],transformer_kwargs['layers'],transformer_kwargs['dropout_p'],transformer_kwargs['hidden'])
         self.testmc = []
+        self.predicted = []
+        
     def forward(self, x, t, mask=None):
         y_pred = self.classifier(x, t, mask)
         return y_pred
@@ -83,3 +85,12 @@ class LightCurveClassifier(pl.LightningModule):
         self.log('test_loss', loss, on_epoch=True, on_step=True, prog_bar=True, sync_dist=True)
         self.log('test_acc', acc, on_epoch=True, on_step=True, prog_bar=True, sync_dist=True)
         return loss
+    
+    def predict_step(self, batch):
+        x, t = batch
+        y_pred_softmax = self.forward(x, t)
+        preds = torch.argmax(y_pred_softmax, dim=1, keepdim=True) 
+        for i in range(len(preds)):
+            self.predicted.append((x[i], t[i], preds[i], y_pred_softmax[i]))
+        return y_pred_softmax
+

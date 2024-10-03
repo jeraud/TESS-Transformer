@@ -23,21 +23,45 @@ import utils
 
 from light_curve_classifier import LightCurveClassifier
 
+from load_data import load_data
+
+
 # from read_tess_data import get_tess_data
 class AccuracyLogger(Callback):
+    """
+    callback function to track validaiton accuracy during training
+    """
     def __init__(self):
         self.val_acc = []
 
     def on_validation_end(self, trainer, pl_module):
         self.val_acc.append(trainer.callback_metrics['val_acc'].item())
 
-def main():
+def main(load_from_device = False, train_set_directory = None, data = None):
+        """
+        Trains the model
+
+        @args:
+            load_from_device(bool): Whether or not the training set time, flux, label 
+                                    tensors have been aloradey loaded and saved on device
+                                    recommended to save tensors to device, load them here,
+                                    saves time not having to load data every time you want to train,
+                                    is also easier for training on cluster.
+            train_set_directory(str): Path to the training set. If None, should load_from_device
+            data(tuple[string]): tuple of (time, flux, labels) where each is the string of the 
+                                relative path to the tensors, ie ('timetensor.pt', 'fluxtensor.pt', 'labelstensor.pt')
+        """
         pl.seed_everything(42, workers=True)
-        # save tensors using read_tess_data.py, load here
-        time = torch.load('timetensor3.pt')
-        flux = torch.load('fluxtensor3.pt')
-        labels = torch.load('labelstensor3.pt')
-        # Get class populations for weighted loss
+        # if load from device, load here
+        if load_from_device:
+            # time.shape = flux.shape = [n,T] ; labels.shape = [n]
+            time, flux, labels = torch.load(data[0]), torch.load(data[1]), torch.load(data[2])
+        # otherwise, need to load tensors
+        else:
+             time, flux, labels = load_data(train_set_directory, have_labels=True)
+
+                # Get class populations for weighted loss
+
         total = labels.sum()
  
         class_weights =  total / labels.sum(axis=0)
@@ -45,6 +69,7 @@ def main():
         # initialize classifier
         mlce = LightCurveClassifier(lr=1e-4, transformer_kwargs={"emb":64, "heads":8, "layers":3, "dropout_p":0.2, "hidden":256},optimizer_kwargs={}, num_classes=8, class_weights=class_weights)
         
+        # train, validate, test splits
         nobjects = flux.shape[0]
         val_fraction = 0.1
         test_fraction = 0.2
@@ -69,27 +94,32 @@ def main():
         print(torch.cuda.is_available())
 
         # Initialize Callbacks
-        checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="val_acc", save_top_k=19, mode="max", filename='{epoch:02d}-{val_acc:.2f}')
+        # model checkpoint: saves top k validation accuraccy models
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="val_acc", save_top_k=5, mode="max", filename='{epoch:02d}-{val_acc:.2f}')
+        # log validation accuraccy for plot
         accuracy_logger = AccuracyLogger()
 
-        trainer = pl.Trainer(max_epochs=3000,
-                            min_epochs=709,
+        #initialize lightning trainer
+        trainer = pl.Trainer(max_epochs=300,
+                            min_epochs=50,
                             #  accelerator='auto',
                             #  devices='auto',
                             # #  num_nodes=1,
                             #  strategy= 'ddp',
                              callbacks=[checkpoint_callback, accuracy_logger])
+        
         print('starting training')
-        trainer.fit(model=mlce, train_dataloaders=train_loader, val_dataloaders=val_loader)
-        top_k_checkpoints = checkpoint_callback.best_k_models.keys()
 
+        trainer.fit(model=mlce, train_dataloaders=train_loader, val_dataloaders=val_loader)
+
+        top_k_checkpoints = checkpoint_callback.best_k_models.keys()
         best_acc = 0.0
         best_loss = 0.0
         best_model_path = None
         best = None
         bModel = None
         
-        # Test each of the top 5 models
+        # find saved model that generalizes the best
         for checkpoint_path in top_k_checkpoints:
             model = LightCurveClassifier.load_from_checkpoint(checkpoint_path)
             trainer = pl.Trainer()
@@ -107,7 +137,7 @@ def main():
  
         print(f'Best Model Path: {best_model_path} with Test Accuracy: {best_acc}')
 
-
+        # save model weights 
         best.save_checkpoint("cl_model_" + str(best_acc) + ".ckpt")
         
         # plot validation accuracy
@@ -126,6 +156,7 @@ def main():
         plt.savefig('confusion_matrix_' + str(best_acc) + '.png')
         plt.close()
 
+        #plot missclassified curves duriing testing
         names = ['APERIODIC', 'CONSTANT', 'CONTACT_ROT', 'DSCT_BCEP', 'ECLIPSE', 'GDOR_SPB', 'RRLYR_CEPH', 'SOLARLIKE']
         for missede in enumerate(bModel.testmc):
             missed = missede[1]
@@ -142,4 +173,4 @@ def main():
         
 
 if __name__ == '__main__':
-     main()
+     main(load_from_device=True, data = ('combotimetensor.pt', 'combofluxtensor.pt', 'combolabelstensor.pt'))

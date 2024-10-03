@@ -8,6 +8,10 @@ import pytorch_lightning as pl
 from create_plots import create_plot
 from sklearn.model_selection import train_test_split
 import torch
+from astropy.io import fits
+from scipy.ndimage import gaussian_filter1d
+import pandas as pd
+
 
 def validate():
     # load validation set flux, time labels
