@@ -30,7 +30,7 @@ Version 3:
     https://ieeexplore.ieee.org/abstract/document/9716923
     https://ieeexplore.ieee.org/abstract/document/9745599
     https://www.mdpi.com/2227-7390/11/3/676
-    
+
 
 Version 4:
     BiLSTM, PE once before conformer layers as well as during layers, additional long range CNN added
@@ -50,8 +50,6 @@ Version 7:
     BiLSTM expands dims, passed through cnn to reduce dims, added to mhsa before resid conn cnn
     lr = 5e-4, transformer_kwargs={"emb":64, "heads":16, "layers":3, "dropout_p":0.3, "hidden":256}
 
-Name Idea: Stellar ConvLAttifier
-CONVolutionLstmATTention
 
 Version 8:
     lstm with cnn, 8 heads, dding after cnn resid:   

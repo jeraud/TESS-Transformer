@@ -7,7 +7,7 @@ def scaled_dot_prod(q,k,v,mask=None):
     d_k = q.size()[-1]
     scaled = torch.matmul(q,k.transpose(-1,-2))
     if mask is not None:
-        print('fuck')
+        print('error')
         scaled += mask
     soft = F.softmax(scaled, dim=-1)
     attention = torch.matmul(soft, v)
