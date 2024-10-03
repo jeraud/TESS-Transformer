@@ -11,6 +11,7 @@ Version 1:
     lr=6e-4, transformer_kwargs={"emb":64, "heads":8, "layers":5, "dropout_p":0.075, "hidden":256}
     after 250 epochs: {'test_loss_epoch': 10.994000434875488, 'test_acc_epoch': 0.9097222089767456}
     confusion matrix: /Users/paul/Desktop/UROP/confusion_matrix_8heads250epochs.png
+    started from astroconformer: https://arxiv.org/abs/2309.16316
 
 Version 2:
     CNN feed forward instead of fully connected in encoder
@@ -24,6 +25,12 @@ Version 3:
     lr=6e-4, transformer_kwargs={"emb":64, "heads":8, "layers":3, "dropout_p":0.5, "hidden":256}
     100 epochs: {'test_loss_epoch': 11.077142715454102, 'test_acc_epoch': 0.9172979593276978}
     91.1% after 75 epochs but with much better on contact_rot with bidirectional LSTM
+    Note: Addding LSTM matches performance of original model on much less training, does better with contact/rot class
+    Papers using LSTM with transformer: 
+    https://ieeexplore.ieee.org/abstract/document/9716923
+    https://ieeexplore.ieee.org/abstract/document/9745599
+    https://www.mdpi.com/2227-7390/11/3/676
+    
 
 Version 4:
     BiLSTM, PE once before conformer layers as well as during layers, additional long range CNN added
