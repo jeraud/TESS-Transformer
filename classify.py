@@ -15,7 +15,6 @@ def classify(data, model, folder_path):
 
     @args:
         data(tuple[string]): tuple of (time, flux) where each is a path to time, flux tensors (.pt files)
-
         model(string): The path to a .ckpt model checkpoint file you wish to load the weights from
         folder_path(string): The path to a folder you want to store plots with light curve, 
                             power spectrum plots, predicted outputs for each light curve you want to predict.

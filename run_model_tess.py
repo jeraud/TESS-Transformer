@@ -37,28 +37,28 @@ class AccuracyLogger(Callback):
     def on_validation_end(self, trainer, pl_module):
         self.val_acc.append(trainer.callback_metrics['val_acc'].item())
 
-def main(load_from_device = False, train_set_directory = None, data = None):
+def main(data, load_from_device = True):
         """
         Trains the model
 
         @args:
             load_from_device(bool): Whether or not the training set time, flux, label 
-                                    tensors have been aloradey loaded and saved on device
+                                    tensors have been already loaded and saved on device.
                                     recommended to save tensors to device, load them here,
                                     saves time not having to load data every time you want to train,
                                     is also easier for training on cluster.
-            train_set_directory(str): Path to the training set. If None, should load_from_device
-            data(tuple[string]): tuple of (time, flux, labels) where each is the string of the 
+            data(tuple[string] or tuple[tensors]): tuple of (time, flux, labels) where each is the string of the 
                                 relative path to the tensors, ie ('timetensor.pt', 'fluxtensor.pt', 'labelstensor.pt')
+                                if load_from_device = True, otherwise tuple of pytorch tensors (time, flux, labels)
         """
         pl.seed_everything(42, workers=True)
         # if load from device, load here
         if load_from_device:
-            # time.shape = flux.shape = [n,T] ; labels.shape = [n]
+            # time.shape = flux.shape = [n,T] ; labels.shape = [n,8]
             time, flux, labels = torch.load(data[0]), torch.load(data[1]), torch.load(data[2])
-        # otherwise, need to load tensors
+
         else:
-             time, flux, labels = load_data(train_set_directory, have_labels=True)
+             time, flux, labels = data
 
                 # Get class populations for weighted loss
 
@@ -100,6 +100,7 @@ def main(load_from_device = False, train_set_directory = None, data = None):
         accuracy_logger = AccuracyLogger()
 
         #initialize lightning trainer
+        # uncomment lines for cluster training
         trainer = pl.Trainer(max_epochs=300,
                             min_epochs=50,
                             #  accelerator='auto',

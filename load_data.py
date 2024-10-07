@@ -11,6 +11,7 @@ import torch
 from astropy.io import fits
 from scipy.ndimage import gaussian_filter1d
 import pandas as pd
+import utils
 
 MAX_LEN = 1171
 
@@ -25,7 +26,7 @@ def open_light_curve_csv(file_path):
 def read_light_curve_file(filepath):
     if filepath.endswith('.fits'):
             #extract light curve
-            extracted = extract(filepath)
+            extracted = extract_qlp(filepath)
             #process curve
             lc = lk.LightCurve({'time':extracted[0], 'flux':extracted[1]})
     elif filepath.endswith('.csv') or filepath.endswith('.ecsv'):
@@ -41,7 +42,7 @@ def read_light_curve_file(filepath):
     return (t, f)
 
 
-def extract(curve_path):
+def extract_TGLC(curve_path):
     """
     Extract the time, fluxes from a fits file
     """
@@ -59,7 +60,81 @@ def extract(curve_path):
         tess_bjds = tess_bjds[where_no_flag]
         sap_fluxes = sap_fluxes[where_no_flag]
         return (tess_bjds, sap_fluxes)
+
+def extract_qlp(curve_path):
+    """
+    Extract the time, fluxes from a fits file
+    """
+    with fits.open(curve_path, mode="readonly") as hdulist:
+        #Flags to keep:
+        dont_exclude = [0,64,256,1024,2048,8192]
+
+        # read time, sap flux, quality flag
+        tess_bjds = hdulist[1].data['TIME']
+        sap_fluxes = hdulist[1].data['SAP_FLUX']
+        qual_flags = hdulist[1].data['QUALITY']
+
+        # remove flagged data
+        where_no_flag = np.where(np.isin(qual_flags,dont_exclude))
+        tess_bjds = tess_bjds[where_no_flag]
+        sap_fluxes = sap_fluxes[where_no_flag]
+        return (tess_bjds, sap_fluxes)
     
+targets = '/Users/paul/Desktop/UROP/tessv1/targets_qlp.csv'
+tess_data_dir = '/Users/paul/Desktop/UROP/tessv1/'
+
+def load_tess_qlp_data():
+    """
+    load labeled tess qlp data into tensors 
+    """
+    labels = []
+    flux = np.zeros((5377, MAX_LEN))
+    time = np.zeros((5377, MAX_LEN))
+    df = pd.read_csv(targets)
+    idx = 0
+    for row in df.iterrows():
+        curve = tess_data_dir + row[1].iloc[3]
+        extracted = extract_qlp(curve)
+        lc = lk.LightCurve({'time':extracted[0], 'flux':extracted[1]})
+        lc = lc.head(MAX_LEN).remove_nans().remove_outliers(sigma=10)
+        t = np.array(lc.time.value) 
+        t = t + -1*t[0] + 0.0001
+        f = np.array(lc.flux.value) - gaussian_filter1d(np.array(lc.flux.value), 61)
+        labels.append(row[1].iloc[1])
+        time[idx, :t.shape[0]] = t 
+        flux[idx, :f.shape[0]] = (f - np.median(f)) / np.std(f)
+        idx += 1
+    constants = '/Users/paul/Desktop/UROP/tessv2_yeschen/CONSTANT'
+    filename_list = os.listdir(constants)
+    for i, filename in enumerate(filename_list):
+        try:
+            df = utils.open_light_curve_csv(filename, constants)
+            labels.append('CONSTANT')
+            lc = lk.LightCurve({'time':df['time'], 'flux':df['flux']})
+            lc = lc.head(MAX_LEN).remove_nans().remove_outliers(sigma=10)
+            # .flatten(window_length=101)
+            t = np.array(lc.time.value) 
+            t = t + -1*t[0] + 0.0001
+            f = np.array(lc.flux.value) - gaussian_filter1d(np.array(lc.flux.value), 61)
+            # - np.mean(np.array(lc.flux.value))
+            print(idx)
+            # labels.append(row[1].iloc[1])
+            time[idx, :t.shape[0]] = t 
+            flux[idx, :f.shape[0]] = (f - np.median(f)) / np.std(f)
+            idx += 1
+        except:
+            print(filename)
+    flux = torch.Tensor(flux)
+    time = torch.Tensor(time)
+    labels = pd.get_dummies(labels)
+    labels = labels.to_numpy()
+    labels = torch.tensor(labels)
+    torch.save(time, 'qlptimetensor.pt')
+    torch.save(flux, 'qlpfluxtensor.pt')
+    torch.save(labels, 'qlplabelstensor.pt')
+    print(flux.shape, time.shape, labels.shape)
+    return (time, flux, labels)
+
 def load_data(dir, have_labels = False):
     """
     Load data into flux, time tensors
@@ -126,3 +201,7 @@ def load_data(dir, have_labels = False):
     else:
         print(flux.shape, time.shape)
         return time, flux
+    
+if __name__ == '__main__':
+    load_tess_qlp_data()
+    # load_data("/Users/paul/Downloads/keplerq9v3/lightcurves", have_labels=True)

@@ -34,39 +34,15 @@ def extract(curve_path):
         sap_fluxes = sap_fluxes[where_gt0]
         return (tess_bjds, sap_fluxes)
 
-# ex = extract(test_curve)
-# lc = lk.LightCurve({'time':ex[0], 'flux':ex[1]})
-# lc = lc.remove_nans().remove_outliers(sigma=10)
-# t = np.array(lc.time.value) 
-# t = t + -1*t[0] + 0.0001
-# f = np.array(lc.flux.value) - gaussian_filter1d(np.array(lc.flux.value), 61)
-# lc = lk.LightCurve({'time':t, 'flux':f})
-# create_plot(lc)
-# power_spec = lc.to_periodogram(method='lombscargle')
-# power_spec.plot()
-# plt.savefig('/Users/paul/Desktop/UROP/tess-wavelets/test_curve2.png')
-# plt.close()
+
 def get_tglc_lightcurves():
     TICdict = {}
     for fit in os.listdir(TLGC):
         path = '/Users/paul/Desktop/UROP/selected_lc/' + fit
         extracted = extract(path)
-        # print(extracted[2])
         TICdict[int(extracted[2])] = path
     return TICdict
-        # lc =  lk.LightCurve({'time':extracted[0], 'flux':extracted[1]})
-        # lc = lc.remove_nans().remove_outliers(sigma=10)
-        # t = np.array(lc.time.value) 
-        # t = t + -1*t[0] + 0.0001
-        # f = np.array(lc.flux.value) 
-        # # - gaussian_filter1d(np.array(lc.flux.value), 53)
-        # f = (f - np.median(f)) / np.std(f)
-        # lc = lk.LightCurve({'time':t, 'flux':f})
-        # lc.plot()
-        # plt.savefig('/Users/paul/Desktop/UROP/tess-wavelets/test_curve2.png')
-        # plt.close()
-        # return None
-# get_tglc_lightcurves()
+
 MAX_LEN = 1171
 
 def tess_kepler_combined():
@@ -121,16 +97,6 @@ def tess_kepler_combined():
             time[idx, :t.shape[0]] = t 
             flux[idx, :f.shape[0]] = (f - np.median(f)) / np.std(f)
             idx += 1
-            # if len(f) < MAX_LEN:
-            #     flux[idx, :len(f)] = (f - np.median(f)) / np.std(f)
-            #     time[idx, :len(df['flux'])] = df['time']
-            # # Otherwise, randomly select n_max_obs observations
-            # else:
-            #     rand_idx = np.random.choice(len(df['flux']), MAX_LEN, replace=False)
-            #     f = df['flux'][rand_idx]
-            #     flux[idx, :] = (f - np.median(f)) / np.std(f)
-            #     time[idx, :] = df['time'][rand_idx]
-            # idx += 1
     ls = os.listdir(DIR_LIGHT_CURVES)
     df_ls = pd.DataFrame(ls, columns=['filename'])
     Klabels = pd.read_csv('/Users/paul/Downloads/keplerq9v3/targets.txt', header=None, names=['tic','class'], comment='#')
@@ -156,11 +122,11 @@ def tess_kepler_combined():
     return (time, flux, labels)
 
 
-tess_kepler_combined()
+# tess_kepler_combined()
 
 
 MAX_SEQ_LEN = 3917
-def get_tess_data():
+def get_tess_data_TGLC():
     # max = 0
     labels = []
     TICdict = get_tglc_lightcurves()
@@ -205,24 +171,6 @@ def get_tess_data():
             idx += 1
         except:
             print(filename)
-    # for filename in os.listdir(r_ceph):
-    #     extracted = extract(os.path.join(r_ceph,filename))
-    #     lc = lk.LightCurve({'time':extracted[0], 'flux':extracted[1]})
-    #     lc = lc.head(1171).remove_nans().remove_outliers(sigma=10)
-    #     # .flatten(window_length=101)
-    #     t = np.array(lc.time.value) 
-    #     t = t + -1*t[0] + 0.0001
-    #     f = np.array(lc.flux.value) - gaussian_filter1d(np.array(lc.flux.value), 53)
-    #         # - np.mean(np.array(lc.flux.value))
-    #     print(idx)
-    #     # labels.append(row[1].iloc[1])
-    #     time[idx, :t.shape[0]] = t 
-    #     flux[idx, :f.shape[0]] = (f - np.median(f)) / np.std(f)
-    #     # idx += 1
-    #     labels.append('RRLYR_CEPHEID')
-    #     # time[idx, :t.shape[0]] = t 
-    #     # flux[idx, :f.shape[0]] = (f - np.median(f)) / np.std(f)
-    #     idx += 1
     flux = torch.Tensor(flux)
     time = torch.Tensor(time)
     labels = pd.get_dummies(labels)
@@ -234,11 +182,11 @@ def get_tess_data():
     torch.save(labels, 'labelstensorTLGC.pt')
     return (time, flux, labels)
 
-# get_tess_data()
+# get_tess_data_TGLC()
 
 def plot_curves():
-    time = torch.load('yeschentime.pt')
-    flux = torch.load('yeschenflux.pt')
+    time = torch.load('qlptimetensor.pt')
+    flux = torch.load('qlpfluxtensor.pt')
     # labels = torch.load('labelstensorrs.pt')
     lc = lk.LightCurve({'time':np.trim_zeros(np.array(time[3000])), 'flux':np.trim_zeros(np.array(flux[3000]))})
     lc.plot()
@@ -248,7 +196,7 @@ def plot_curves():
     plt.savefig('/Users/paul/Desktop/UROP/tess-wavelets/test_curve4.png')
     plt.close()
     # print(labels[0])
-# plot_curves()
+plot_curves()
 
 def get_large_val_set(dir):
     labels = []
