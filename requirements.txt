@@ -1,0 +1,13 @@
+astropy
+Bottleneck
+lightkurve
+matplotlib
+numpy
+pandas
+pytorch_lightning
+PyYAML
+scikit_learn
+scipy
+torch
+torchmetrics
+tqdm

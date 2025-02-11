@@ -14,4 +14,4 @@ module load anaconda3/2020.02-2ks5tch
 module load cuda/11.8
 source /home/paulg9/miniforge3/bin/activate
 
-srun /home/paulg9/miniforge3/bin/python run_model_tess.py
+srun /home/paulg9/miniforge3/bin/python train.py

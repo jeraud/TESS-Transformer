@@ -7,9 +7,9 @@ import argparse
 
 from numpy.core.defchararray import add
 
-from powerspectrum import powerspectrum
+from Helper_functions.powerspectrum import powerspectrum
 
-from utils2 import load_lightcurve
+from Helper_functions.utils2 import load_lightcurve
 
 def create_plot(lc, filename, title):
 
@@ -48,9 +48,8 @@ def create_plot(lc, filename, title):
     # probs = row[['DSCT', 'GDOR', 'HYBRIDS', 'OTHER']]
     # ax.text(0.5,0.95,'CLASS: ' + row['max_prob'],weight='bold',bbox=dict(facecolor='white', alpha=1), transform = ax.transAxes, ha='center', va='center')
     # ax.text(0.7,0.82,"Probabilities" + '\n' + probs.to_string(float_format=lambda x: '%.3f' % x),bbox=dict(facecolor='white', alpha=0.8), transform = ax.transAxes, ha='right', va='center')
-    file_path = os.path.join('missclassified_curves', filename)
     plt.tight_layout()
-    plt.savefig(file_path)
+    plt.savefig(filename)
     plt.close()
 
 def main(args):

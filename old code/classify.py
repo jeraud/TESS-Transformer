@@ -3,9 +3,9 @@ import torch
 import lightkurve as lk
 import os
 from torch.utils.data import TensorDataset, DataLoader
-from light_curve_classifier import LightCurveClassifier
+from Model.light_curve_classifier import LightCurveClassifier
 import pytorch_lightning as pl
-from create_plots import create_plot
+from helper_functions.create_plots import create_plot
 import torch
 
 
@@ -19,7 +19,7 @@ def classify(data, model, folder_path):
         folder_path(string): The path to a folder you want to store plots with light curve, 
                             power spectrum plots, predicted outputs for each light curve you want to predict.
     """
-    time, flux = torch.load(data[0]), torch.load(data[1])
+    time, flux, tic = torch.load(data[0]), torch.load(data[1])
 
     # if no cuda, need float32 to run on MPS
     if not torch.cuda.is_available():

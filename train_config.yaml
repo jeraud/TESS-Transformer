@@ -1,0 +1,43 @@
+######### Configuration for Training #########
+
+Model: 
+  embedding_dim: 64
+  layers: 3
+  heads: 8
+  hidden_size: 256
+  dropout_p: 0.1
+  num_classes: 8
+  class_names: ['APERIODIC', 'CONSTANT', 'CONTACT_ROT', 'DSCT_BCEP', 'ECLIPSE', 'GDOR_SPB', 'RRLYR_CEPH', 'SOLARLIKE']
+
+Training:
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  batch_size: 32
+  min_epochs: 700
+  max_epochs: 1000
+  train_split: 0.7
+  validation_split: 0.1
+  test_split: 0.2
+  accelerator: 'mps'
+  save_top_k: 10
+  metric: 'val_acc'
+  mode: 'max'
+  output_dir: '/Users/paul/Desktop/UROP/tess-wavelets/output_test/'
+  plot_misclassifieds: True
+
+Data:
+
+  # if you have tensors saved as .pt files, set tensors_saved_on_device to True, 
+  # put the paths to the files for time_tensor, flux_tensor, label_tensor
+  tensors_saved_on_device: False
+  time_tensor: 
+  flux_tensor:
+  label_tensor:
+
+  # if you wish to load the data (ie dont have the tensors already saved), 
+  # put the path to the directory with the light curves and the targets file here.
+  # targets: a csv or ecscv file with columns tic, class, method, path_to_lightcurve
+  dir_path: '/Users/paul/Desktop/UROP/data/tessv1/'
+  targets: '/Users/paul/Desktop/UROP/data/tessv1/targets_qlp.csv'
+  seq_len: 1171
+  tess_preprocess: True

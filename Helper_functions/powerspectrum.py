@@ -16,7 +16,9 @@ except ImportError:
 	from astropy.stats import LombScargle
 from bottleneck import nanmedian, nanmean, nanmax, nanmin
 from scipy.optimize import minimize_scalar
-from scipy.integrate import simps
+import scipy
+from scipy import integrate
+from scipy.integrate import simpson
 
 class powerspectrum(object):
 	"""
@@ -99,7 +101,7 @@ class powerspectrum(object):
 		"""Estimate fundamental spacing using the integral of the spectral window function."""
 		# Integrate the windowfunction
 		freq, window = self.windowfunction(width=100*self.df, oversampling=5)
-		df = simps(window, freq)
+		df = simpson(window, freq)
 		return df*1e-6
 
 	#----------------------------------------------------------------------------------------------

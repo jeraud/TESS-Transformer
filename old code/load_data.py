@@ -3,15 +3,14 @@ import torch
 import lightkurve as lk
 import os
 from torch.utils.data import TensorDataset, DataLoader, random_split, Subset
-from light_curve_classifier import LightCurveClassifier
 import pytorch_lightning as pl
-from create_plots import create_plot
+from helper_functions.create_plots import create_plot
 from sklearn.model_selection import train_test_split
 import torch
 from astropy.io import fits
 from scipy.ndimage import gaussian_filter1d
 import pandas as pd
-import utils
+import helper_functions.utils as utils
 
 MAX_LEN = 1171
 
@@ -82,59 +81,100 @@ def extract_qlp(curve_path):
     
 targets = '/Users/paul/Desktop/UROP/tessv1/targets_qlp.csv'
 tess_data_dir = '/Users/paul/Desktop/UROP/tessv1/'
+r_ceph = '/Users/paul/Desktop/UROP/tessv2_yeschen/RRLYR_CEPHEID'
 
 def load_tess_qlp_data():
     """
     load labeled tess qlp data into tensors 
     """
     labels = []
-    flux = np.zeros((5377, MAX_LEN))
-    time = np.zeros((5377, MAX_LEN))
+    flux = np.zeros((5933, MAX_LEN))
+    time = np.zeros((5933, MAX_LEN))
     df = pd.read_csv(targets)
     idx = 0
     for row in df.iterrows():
+        label = row[1].iloc[1]
+        # num_cr = 0
+        # if label == 'CONTACT_ROT':
+        #     num_cr += 1
+        #     print('CONTACT_ROT', num_cr)
+        #     time = time[:-1, :]
+        #     flux = flux[:-1, :]
+        #     continue
         curve = tess_data_dir + row[1].iloc[3]
         extracted = extract_qlp(curve)
         lc = lk.LightCurve({'time':extracted[0], 'flux':extracted[1]})
-        lc = lc.head(MAX_LEN).remove_nans().remove_outliers(sigma=10)
+        # lc = lc.remove_nans().remove_outliers(sigma=10).head(MAX_LEN)
         t = np.array(lc.time.value) 
-        t = t + -1*t[0] + 0.0001
-        f = np.array(lc.flux.value) - gaussian_filter1d(np.array(lc.flux.value), 61)
-        labels.append(row[1].iloc[1])
+        t = t 
+        # -1*t[0] + 0.0001
+        f = np.array(lc.flux.value) 
+        # - gaussian_filter1d(np.array(lc.flux.value), 61)
+        # print(f.shape)
+        # f = f.reshape(-1, 2).mean(axis=1)
+        # t = t.reshape(-1, 2).mean(axis=1)
+        labels.append(label)
         time[idx, :t.shape[0]] = t 
-        flux[idx, :f.shape[0]] = (f - np.median(f)) / np.std(f)
+        flux[idx, :f.shape[0]] = f
+        # (f - np.median(f)) / np.std(f)
         idx += 1
-    constants = '/Users/paul/Desktop/UROP/tessv2_yeschen/CONSTANT'
-    filename_list = os.listdir(constants)
+    
+    for filename in os.listdir(r_ceph):
+        if filename.startswith("hlsp_qlp") and filename.endswith('.fits'):
+                    extracted = extract_qlp(os.path.join(r_ceph,filename))
+                    lc = lk.LightCurve({'time':extracted[0], 'flux':extracted[1]})
+                    # lc = lc.remove_nans().remove_outliers(sigma=10).head(MAX_LEN)
+                    t = np.array(lc.time.value) 
+                    t = t 
+                    # + -1*t[0] + 0.0001
+                    f = np.array(lc.flux.value) 
+                    # - gaussian_filter1d(np.array(lc.flux.value), 61)
+                    print(idx)
+                    # f = f.reshape(-1, 2).mean(axis=1)
+                    # t = t.reshape(-1, 2).mean(axis=1)
+                    labels.append('RRLYR_CEPHEID')
+                    time[idx, :t.shape[0]] = t 
+                    flux[idx, :f.shape[0]] = f
+                    # (f - np.median(f)) / np.std(f)
+                    idx += 1
+        
+    constants = '/Users/paul/Desktop/UROP/tessv1/CONSTANT/'
+    filename_list = os.listdir(constants)   
     for i, filename in enumerate(filename_list):
         try:
             df = utils.open_light_curve_csv(filename, constants)
             labels.append('CONSTANT')
             lc = lk.LightCurve({'time':df['time'], 'flux':df['flux']})
-            lc = lc.head(MAX_LEN).remove_nans().remove_outliers(sigma=10)
+            # lc = lc.remove_nans().remove_outliers(sigma=10).head(MAX_LEN)
             # .flatten(window_length=101)
             t = np.array(lc.time.value) 
-            t = t + -1*t[0] + 0.0001
-            f = np.array(lc.flux.value) - gaussian_filter1d(np.array(lc.flux.value), 61)
+            t = t 
+            # + -1*t[0] + 0.0001
+            f = np.array(lc.flux.value) 
+            # - gaussian_filter1d(np.array(lc.flux.value), 61)
             # - np.mean(np.array(lc.flux.value))
+            # f = f.reshape(-1, 2).mean(axis=1)
+            # t = t.reshape(-1, 2).mean(axis=1)
             print(idx)
             # labels.append(row[1].iloc[1])
             time[idx, :t.shape[0]] = t 
-            flux[idx, :f.shape[0]] = (f - np.median(f)) / np.std(f)
+            flux[idx, :f.shape[0]] = f
+            # (f - np.median(f)) / np.std(f)
             idx += 1
         except:
             print(filename)
     flux = torch.Tensor(flux)
     time = torch.Tensor(time)
-    labels = pd.get_dummies(labels)
+    labels = pd.get_dummies(labels, dtype=float)
     labels = labels.to_numpy()
     labels = torch.tensor(labels)
-    torch.save(time, 'qlptimetensor.pt')
-    torch.save(flux, 'qlpfluxtensor.pt')
-    torch.save(labels, 'qlplabelstensor.pt')
+    print(labels[0])
+    torch.save(time, 'qlptimetensorRAW.pt')
+    torch.save(flux, 'qlpfluxtensorRAW.pt')
+    torch.save(labels, 'qlplabelstensorRAW.pt')
     print(flux.shape, time.shape, labels.shape)
     return (time, flux, labels)
-
+load_tess_qlp_data()
 def load_data(dir, have_labels = False):
     """
     Load data into flux, time tensors
@@ -187,7 +227,7 @@ def load_data(dir, have_labels = False):
     time = torch.Tensor(time)
     flux = torch.Tensor(flux)
     if have_labels:
-        labels = pd.get_dummies(labels)
+        labels = pd.get_dummies(labels, dtype=float)
         labels = labels.to_numpy()
         labels = torch.Tensor(labels)
         print(flux.shape, time.shape, labels.shape)

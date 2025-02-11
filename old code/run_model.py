@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy
-
+from astropy.table import Table
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
@@ -16,9 +16,9 @@ from torchmetrics.classification import MulticlassConfusionMatrix
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.callbacks import Callback
 
-import utils
+import helper_functions.utils as utils
 
-from light_curve_classifier import LightCurveClassifier
+from Model.light_curve_classifier import LightCurveClassifier
 
 # from read_tess_data import get_tess_data
 class AccuracyLogger(Callback):
@@ -29,36 +29,90 @@ class AccuracyLogger(Callback):
         self.val_acc.append(trainer.callback_metrics['val_acc'].item())
 
 def main():
+        kic2tic = {}
+        crossmatch = '/Users/paul/Desktop/UROP/kic2tic/KIC2TIC.csv'
+        df = pd.read_csv(crossmatch)
+
+        for row in df.iterrows():
+            kic = row[1].iloc[0]
+            tic = row[1].iloc[1]
+            kic2tic[kic] = tic
+
+        tics = set()
+        kics = set()
+
+        targets = '/Users/paul/Desktop/UROP/data/tessv1/targets_qlp.csv'
+        df = pd.read_csv(targets)
+        for row in df.iterrows():
+            tic = row[1].iloc[0]
+            tics.add(tic)
+            
+        for filename in os.listdir("/Users/paul/Downloads/keplerq9v3/lightcurves"):
+            if not (filename.startswith('constant') or filename.startswith('fake')):
+                kic = filename[:-4]
+                assert(len(kic) == 9)
+                kics.add(int(kic))
+
+        print(len(kics))
+        exclude_kic = set()
+
+        num_repeats = 0
+        num_not_there = 0
+        for kic in kics:
+            try:
+                if kic2tic[kic] in tics:
+                    num_repeats +=1
+                    exclude_kic.add(kic)
+            except:
+                num_not_there += 1
+                exclude_kic.add(kic)
+
+        print(num_repeats)
+        print(num_not_there)
+        
+        print(len(kics) - len(exclude_kic))
+
+
         DIR_LIGHT_CURVES = "/Users/paul/Downloads/keplerq9v3/lightcurves"
         pl.seed_everything(42, workers=True)
 
         #### Read in light curves for training
 
-        n_max_obs = 1350
+        n_max_obs = 1171
 
         # Open all light curves and save as list. Pad observations with zeros up to n_max_obs.
-        flux = np.zeros((len(os.listdir(DIR_LIGHT_CURVES)), n_max_obs))
-        time = np.zeros((len(os.listdir(DIR_LIGHT_CURVES)), n_max_obs))
-        mask = np.zeros((len(os.listdir(DIR_LIGHT_CURVES)), n_max_obs), dtype=bool)
-
+        flux = np.zeros((len(os.listdir(DIR_LIGHT_CURVES)) - len(exclude_kic), n_max_obs))
+        time = np.zeros((len(os.listdir(DIR_LIGHT_CURVES)) - len(exclude_kic), n_max_obs))
+        # mask = np.zeros((len(os.listdir(DIR_LIGHT_CURVES)), n_max_obs), dtype=bool)
+        incl_kic = []
         filename_list = os.listdir(DIR_LIGHT_CURVES)
         idx = 0
         for i, filename in enumerate(filename_list):
             # print(f"{i} of {len(filename_list)}")
             if filename.endswith(".txt"):
+                # data = Table.read('/Users/paul/Desktop/UROP/data/tessv1/targets2.ecsv', format="ascii.ecsv")
+                # df = pd.('/Users/paul/Downloads/keplerq9v3/targets.ecsv')
                 df = utils.open_light_curve_csv(filename, DIR_LIGHT_CURVES)
-                # If less than n_max_obs observations, pad with zeros
-                if len(df['flux']) < n_max_obs:
-                    flux[idx, :len(df['flux'])] = df['flux']
-                    time[idx, :len(df['flux'])] = df['time']
-                    mask[idx, :len(df['flux'])] = 1
-                # Otherwise, randomly select n_max_obs observations
-                else:
-                    rand_idx = np.random.choice(len(df['flux']), n_max_obs, replace=False)
-                    flux[idx, :] = df['flux'][rand_idx]
-                    time[idx, :] = df['time'][rand_idx]
-                    mask[idx, :] = 1
-                idx += 1
+                if filename.startswith('constant'):
+                    flux = flux[:-1]
+                    time = time[:-1]
+                    continue
+                kic = int(filename[:-4]) if not filename.startswith('fake') else filename[:-4]
+                if kic not in exclude_kic or filename.startswith('fake'):
+                    incl_kic.append(kic)
+                    # If less than n_max_obs observations, pad with zeros
+                    if len(df['flux']) < n_max_obs:
+                        flux[idx, :len(df['flux'])] = df['flux']
+                        time[idx, :len(df['flux'])] = df['time']
+                        # mask[idx, :len(df['flux'])] = 1
+                    # Otherwise, randomly select n_max_obs observations
+                    else:
+                        # rand_idx = np.random.choice(len(df['flux']), n_max_obs, replace=False)
+                        flux[idx, :] = df['flux'][:n_max_obs]
+                        time[idx, :] = df['time'][:n_max_obs]
+                        # mask[idx, :] = 1
+                    idx += 1
+
 
 
         # Standardize fluxes
@@ -76,21 +130,66 @@ def main():
         # Convert to torch tensors
         flux = torch.Tensor(flux)
         time = torch.Tensor(time)
-        mask = torch.Tensor(mask).to(torch.bool)
+        print(flux.shape)
+        print(len(incl_kic))
+        # mask = torch.Tensor(mask).to(torch.bool)
         # Read in light curve ordering
         ls = os.listdir(DIR_LIGHT_CURVES)
         df_ls = pd.DataFrame(ls, columns=['filename'])
 
         # Read labels
         labels = pd.read_csv('/Users/paul/Downloads/keplerq9v3/targets.txt', header=None, names=['tic','class'], comment='#')
-        labels = labels[labels['class']!='INSTRUMENT']
+        kic2label = {}
+        labels_arr = []
+        for i, label in labels.iterrows():
+            star_class = label.iloc[1]
+            star_tic = int(label.iloc[0]) if label.iloc[0][0] in '0123456789' else label.iloc[0]
+            kic2label[star_tic] = star_class
         
+        for ki in incl_kic:
+            labels_arr.append(kic2label[ki])
+
+        
+        
+        print(len(labels_arr))
+        print('CONSTANT' in labels_arr)
+        labels_arr = pd.get_dummies(labels_arr, dtype=float)
+        labels_arr = labels_arr.to_numpy()
+        
+        # return None
+        new_array = np.array([np.insert(row, 1, 0) for row in labels_arr])
+        for row in new_array:
+            if np.count_nonzero(row) != 1:
+                print('ERROR')
+        print(new_array.shape)
+        labels_tensor = torch.tensor(new_array)
+        print(flux.shape, time.shape, labels_tensor.shape)
+        torch.save(flux, 'crossmatched_kepler_flux.pt')
+        torch.save(time, 'crossmatched_kepler_time.pt')
+        torch.save(labels_tensor, 'crossmatched_kepler_labels.pt')
+
+        return None
+        
+
+        # labels = labels[labels['class']!='INSTRUMENT']
+        # labels = labels[labels['tic'] not in exclude_kic]
+        # print(len(labels))
+        # return None
         #Order labels according to light curve files
         labels['filename'] = labels['tic'].apply('{:0>9}'.format) + '.txt'
         labels = df_ls.merge(labels,on='filename', how='left')[['tic','class']]
-        
+        print(len(labels))
         labels_onehot = pd.get_dummies(labels['class']).to_numpy()
         labels = torch.Tensor(labels_onehot)
+        classes = ['APERIODIC', 'CONSTANT', 'CONTACT_ROT', 'DSCT_BCEP', 'ECLIPSE', 'GDOR_SPB', 'RRLYR_CEPH', 'SOLARLIKE']
+        population_dict = {label:0 for label in classes}
+        population_dict = {label:0 for label in classes}
+        # print(labels[0])
+        for label in labels:
+            nonzero_index = torch.nonzero(label, as_tuple=True)[0]
+            population_dict[classes[nonzero_index]] += 1
+    
+        print(population_dict)
         
         # Get class populations for weighted loss
         total = labels.sum()

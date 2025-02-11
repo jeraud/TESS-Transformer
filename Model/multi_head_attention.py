@@ -5,7 +5,7 @@ import math
 
 def scaled_dot_prod(q,k,v,mask=None):
     d_k = q.size()[-1]
-    scaled = torch.matmul(q,k.transpose(-1,-2))
+    scaled = torch.matmul(q,k.transpose(-1,-2))*math.sqrt((1/d_k))
     if mask is not None:
         print('error')
         scaled += mask
@@ -26,11 +26,13 @@ class TimePositionalEncoding(nn.Module):
         self.d_emb = d_emb
 
     def forward(self, t):
-        pe = torch.zeros(t.shape[0], t.shape[1], self.d_emb).to(t.device)  # (B, T, D)
+        batch_size = t.shape[0]
+        max_len = t.shape[1]
+        pe = torch.zeros(batch_size, max_len, self.d_emb).to(t.device)  # (B, T, D)
         div_term = torch.exp(torch.arange(0, self.d_emb, 2).float() * (-math.log(10000.0) / self.d_emb))[None, None, :].to(t.device)  # (1, 1, D / 2)
         t = t.unsqueeze(2)  # (B, 1, T)
-        pe[:, :, 0::2] = torch.sin(t * div_term)  # (B, T, D / 2)
-        pe[:, :, 1::2] = torch.cos(t * div_term)  # (B, T, D / 2)
+        pe[:, :, 0::2] = torch.sin((t / div_term)*(self.d_emb/max_len)) # (B, T, D / 2)
+        pe[:, :, 1::2] = torch.cos((t / div_term)*(self.d_emb/max_len))  # (B, T, D / 2)
         return pe  # (B, T, D)
 
 class MHSA(nn.Module):
@@ -68,9 +70,9 @@ class ConvFeedForward(nn.Module):
         x = self.convo2(x)
         x = self.norm(x)
         x = self.swish2(x)
+        x = self.dropout(x)
         x = self.convo3(x)
         x = x.transpose(1,2)
-        x = self.dropout(x)
         return x
         
 class TransformerLayer(nn.Module):
@@ -82,14 +84,19 @@ class TransformerLayer(nn.Module):
         self.dropout1 = nn.Dropout(p=dropout_p)
         self.cffn = ConvFeedForward(emb_d, ffn_d, dropout_p=dropout_p)
         self.norm2 = nn.LayerNorm(normalized_shape=emb_d)
+        self.dropout2 = nn.Dropout(p=dropout_p)
+        self.dropout3 = nn.Dropout(p=dropout_p)
+
     def forward(self,x,t, mask=None):
         t = t - t[:, 0].unsqueeze(1)
         x = x + self.time_encoding(t)
+        x = self.dropout1(x)
         residual_x = x
         x = self.attention(x, t, mask=None)
-        x = self.dropout1(x)
+        x = self.dropout2(x)
         x = self.norm1(x + residual_x)
         residual_x = x
         x = self.cffn(x)
+        x = self.dropout3(x)
         x = self.norm2(x + residual_x)
         return x

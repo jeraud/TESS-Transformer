@@ -1,0 +1,31 @@
+Model:
+  weights_path: '/Users/paul/Desktop/UROP/checkpoints/updated_model.ckpt'
+  embedding_dim: 64
+  layers: 3
+  heads: 8
+  hidden_size: 256
+  dropout_p: 0.1
+  num_classes: 8
+  class_names: ['APERIODIC', 'CONSTANT', 'CONTACT_ROT', 'DSCT_BCEP', 'ECLIPSE', 'GDOR_SPB', 'RRLYR_CEPH', 'SOLARLIKE']
+
+Inference:
+  output_dir: '/Users/paul/Desktop/UROP/tess-wavelets/sector_26output/'
+  batch_size: 64
+  produce_plots: True
+  device: 'mps'
+
+
+Data:
+  # if you have tensors already saved as .pt files, set tensors_saved_on_device to True, 
+  # put the paths to the files for time_tensor, flux_tensor, tic_tensor
+  tensors_saved_on_device: True
+  time_tensor: '/Users/paul/Desktop/UROP/Tensors/sector26_flux_tensor.pt'
+  flux_tensor: '/Users/paul/Desktop/UROP/Tensors/sector26_time_tensor.pt'
+  tic_tensor: '/Users/paul/Desktop/UROP/Tensors/sector26_ticids_tensor.pt'
+
+
+  # data should be a directory of .fits files
+  data_path: '/Users/paul/Desktop/UROP/data/tessv1/'
+  seq_len: 1171
+  num_workers: 4
+  tess_preprocess: True

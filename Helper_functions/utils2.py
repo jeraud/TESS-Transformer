@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from quality import TESSQualityFlags
+from Helper_functions.quality import TESSQualityFlags
 from astropy.units import cds
 from astropy.io import fits
 import lightkurve as lk
