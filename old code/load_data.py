@@ -4,13 +4,13 @@ import lightkurve as lk
 import os
 from torch.utils.data import TensorDataset, DataLoader, random_split, Subset
 import pytorch_lightning as pl
-from helper_functions.create_plots import create_plot
+from Helper_functions.create_plots import create_plot
 from sklearn.model_selection import train_test_split
 import torch
 from astropy.io import fits
 from scipy.ndimage import gaussian_filter1d
 import pandas as pd
-import helper_functions.utils as utils
+import Helper_functions.utils as utils
 
 MAX_LEN = 1171
 

@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import lightkurve as lk
 import os
-import helper_functions.utils as utils
+import Helper_functions.utils as utils
 from scipy.ndimage import gaussian_filter1d
 import torch
 

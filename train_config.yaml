@@ -1,42 +1,55 @@
 ######### Configuration for Training #########
 
 Model: 
+  # model hyper-parameters
   embedding_dim: 64
   layers: 3
   heads: 8
   hidden_size: 256
   dropout_p: 0.1
+  # number of classes and their names
   num_classes: 8
   class_names: ['APERIODIC', 'CONSTANT', 'CONTACT_ROT', 'DSCT_BCEP', 'ECLIPSE', 'GDOR_SPB', 'RRLYR_CEPH', 'SOLARLIKE']
 
 Training:
-  learning_rate: 0.0001
-  weight_decay: 0.0001
+  # optimizer args
+  learning_rate: 1e-4
+  weight_decay: 1e-4
+  # trining batch size
   batch_size: 32
+  # epochs to train for
   min_epochs: 700
   max_epochs: 1000
+  # fraction of data to train, validate, test on.
   train_split: 0.7
   validation_split: 0.1
   test_split: 0.2
+  # device to train on. Cuda recommended if available.
   accelerator: 'mps'
+  # how many models to save for testing during training.
+  # Each model is tested and the one that generalizes the best is saved.
+  # metric and mode determine which models are saved for testing
   save_top_k: 10
   metric: 'val_acc'
   mode: 'max'
+  # the directory to save the model weights, confusion matrix, and plots
   output_dir: '/Users/paul/Desktop/UROP/tess-wavelets/output_test/'
+  # whether to plot all lightcurves misclassified during testing
   plot_misclassifieds: True
 
 Data:
-
   # if you have tensors saved as .pt files, set tensors_saved_on_device to True, 
   # put the paths to the files for time_tensor, flux_tensor, label_tensor
   tensors_saved_on_device: False
   time_tensor: 
   flux_tensor:
   label_tensor:
-
   # if you wish to load the data (ie dont have the tensors already saved), 
   # put the path to the directory with the light curves and the targets file here.
   # targets: a csv or ecscv file with columns tic, class, method, path_to_lightcurve
+  # if tess_preprocess is True, light curves are preprocessed as described in section 
+  # 4.2.2 of Gregory et al. (2025). sequence length should be the maximim number of time steps
+  # in the data (should be fairly consistent for all lightcurves)
   dir_path: '/Users/paul/Desktop/UROP/data/tessv1/'
   targets: '/Users/paul/Desktop/UROP/data/tessv1/targets_qlp.csv'
   seq_len: 1171
