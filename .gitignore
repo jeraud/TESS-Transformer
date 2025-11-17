@@ -1,0 +1,14 @@
+__pycache__/
+legacy/
+*.ckpt
+*.py[cod]
+*.so
+.DS_Store
+.env
+.venv/
+build/
+dist/
+legacy/
+.vscode/
+.github/
+*.egg-info/

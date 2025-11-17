@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astrafier"
+version = "0.1.0"
+description = "Light-curve classifier for TESS wavelet experiments"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "astropy",
+  "Bottleneck",
+  "lightkurve",
+  "matplotlib",
+  "numpy",
+  "pandas",
+  "pytorch-lightning",
+  "PyYAML",
+  "scikit-learn",
+  "scipy",
+  "torch",
+  "torchmetrics",
+  "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["black", "isort", "mypy", "pytest", "ruff"]
+
+[project.scripts]
+astrafier = "astrafier.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F"]
+ignore = ["E203", "E501"]
+

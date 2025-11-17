@@ -1,5 +1,6 @@
 astropy
 Bottleneck
+huggingface_hub
 lightkurve
 matplotlib
 numpy
@@ -11,3 +12,4 @@ scipy
 torch
 torchmetrics
 tqdm
+
