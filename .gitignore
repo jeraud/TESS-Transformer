@@ -12,3 +12,5 @@ legacy/
 .vscode/
 .github/
 *.egg-info/
+lightcurves_raw/
+.cursor/
