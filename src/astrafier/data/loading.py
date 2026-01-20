@@ -18,18 +18,75 @@ QUALITY_FLAGS_KEEP: Tuple[int, ...] = (0, 64, 256, 1024, 2048, 8192)
 DEFAULT_SEQ_LEN = 1171
 
 
+def _extract_cadence_only(path: Path) -> Optional[float]:
+    """
+    Lightweight function to extract cadence (exposure time) from FITS headers only.
+    
+    This function only reads headers, not table data, making it fast for cadence detection
+    during file grouping operations.
+    
+    Args:
+        path: Path to FITS file
+        
+    Returns:
+        Exposure time in seconds, or None if not found
+    """
+    try:
+        with fits.open(path, mode="readonly") as hdulist:
+            # Check primary header first
+            primary_header = hdulist[0].header
+            exptime = primary_header.get("EXPTIME") or primary_header.get("T_EXPTIME")
+            
+            if exptime is not None:
+                return float(exptime)
+            
+            # Check extension header if available
+            if len(hdulist) > 1:
+                ext_header = hdulist[1].header
+                exptime = ext_header.get("EXPTIME") or ext_header.get("T_EXPTIME")
+                if exptime is not None:
+                    return float(exptime)
+    except Exception:
+        # If anything goes wrong, return None (will be handled by caller)
+        pass
+    
+    return None
+
+
 @dataclass
 class LoadedCurve:
     time: torch.Tensor
     flux: torch.Tensor
     mask: torch.Tensor
     ticid: int
+    cadence: Optional[float] = None
 
 
-def _extract_lightcurve(path: Path) -> Tuple[np.ndarray, np.ndarray, Optional[int]]:
+def _extract_lightcurve(path: Path) -> Tuple[np.ndarray, np.ndarray, Optional[int], Optional[float]]:
+    """
+    Extract light curve data and cadence from FITS file.
+    
+    Returns:
+        Tuple of (time, flux, ticid, cadence) where:
+        - time: time array
+        - flux: flux array
+        - ticid: TIC ID or None
+        - cadence: exposure time in seconds, or None if cannot be determined
+    """
     with fits.open(path, mode="readonly") as hdulist:
         header = hdulist[0].header
         ticid = header.get("TICID") or header.get("TIC_ID") or header.get("TARGETID")
+
+        # Try to extract cadence from headers first
+        cadence = header.get("EXPTIME") or header.get("T_EXPTIME")
+        if cadence is not None:
+            cadence = float(cadence)
+        elif len(hdulist) > 1:
+            # Check extension header
+            ext_header = hdulist[1].header
+            cadence = ext_header.get("EXPTIME") or ext_header.get("T_EXPTIME")
+            if cadence is not None:
+                cadence = float(cadence)
 
         table = hdulist[1].data
         names = {name.lower(): name for name in table.names}
@@ -51,17 +108,28 @@ def _extract_lightcurve(path: Path) -> Tuple[np.ndarray, np.ndarray, Optional[in
             time = time[mask]
             flux = flux[mask]
 
-    return time, flux, int(ticid) if ticid is not None else None
+        # If cadence not found in headers, calculate from time differences
+        if cadence is None and len(time) > 1:
+            # Calculate median time difference and convert from days to seconds
+            time_diffs = np.diff(time)
+            if len(time_diffs) > 0:
+                median_diff_days = np.median(time_diffs)
+                cadence = float(median_diff_days * 86400)  # Convert days to seconds
+                # Sanity check: cadence should be reasonable (between 1 second and 1 day)
+                if cadence < 1.0 or cadence > 86400:
+                    cadence = None
+
+    return time, flux, int(ticid) if ticid is not None else None, cadence
 
 
-def _preprocess_lightcurve(time: np.ndarray, flux: np.ndarray, seq_len: int) -> LoadedCurve:
+def _preprocess_lightcurve(time: np.ndarray, flux: np.ndarray, seq_len: int, cadence: Optional[float] = None) -> LoadedCurve:
     lc = lk.LightCurve(time=time, flux=flux)
     lc = lc.remove_nans().remove_outliers(sigma=10)
     if len(lc.time) == 0:
         padded_time = torch.zeros(seq_len, dtype=torch.float32)
         padded_flux = torch.zeros(seq_len, dtype=torch.float32)
         mask = torch.zeros(seq_len, dtype=torch.bool)
-        return LoadedCurve(time=padded_time, flux=padded_flux, mask=mask, ticid=-1)
+        return LoadedCurve(time=padded_time, flux=padded_flux, mask=mask, ticid=-1, cadence=cadence)
 
     trimmed = lc[:seq_len]
     time_values = np.array(trimmed.time.value, dtype=np.float32)
@@ -90,12 +158,13 @@ def _preprocess_lightcurve(time: np.ndarray, flux: np.ndarray, seq_len: int) -> 
         flux=torch.from_numpy(padded_flux),
         mask=torch.from_numpy(mask),
         ticid=-1,
+        cadence=cadence,
     )
 
 
 def load_processed_lightcurve(path: Path, seq_len: int = DEFAULT_SEQ_LEN) -> LoadedCurve:
-    time, flux, ticid = _extract_lightcurve(path)
-    curve = _preprocess_lightcurve(time, flux, seq_len)
+    time, flux, ticid, cadence = _extract_lightcurve(path)
+    curve = _preprocess_lightcurve(time, flux, seq_len, cadence=cadence)
     if ticid is not None:
         curve.ticid = ticid
     else:
