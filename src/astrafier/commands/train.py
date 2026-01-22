@@ -69,6 +69,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-epochs", type=int, default=150, help="Maximum number of training epochs")
     parser.add_argument("--min-epochs", type=int, default=5, help="Minimum number of training epochs")
     parser.add_argument("--precision", type=str, default="bf16-mixed", help="Precision to use in Lightning trainer")
+    parser.add_argument("--cadence", type=str, default="30min", help="Cadence to use for training (default: %(default)s)")
     parser.add_argument(
         "--strategy",
         type=str,
@@ -327,6 +328,7 @@ def add_parser(subparsers) -> None:
     parser.add_argument("--max-epochs", type=int, default=150, help="Maximum number of training epochs")
     parser.add_argument("--min-epochs", type=int, default=5, help="Minimum number of training epochs")
     parser.add_argument("--precision", type=str, default="bf16-mixed", help="Precision to use in Lightning trainer")
+    parser.add_argument("--cadence", type=str, default="30min", help="Cadence to use for training (default: %(default)s)")
     parser.add_argument(
         "--strategy",
         type=str,

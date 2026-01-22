@@ -14,6 +14,11 @@ def seconds_to_cadence_name(seconds: float, tolerance: float = 10) -> Optional[s
     return None
 
 def cadence_name_to_seconds(cadence_name: str) -> Optional[float]:
+    if cadence_name not in SUPPORTED_CADENCES:
+        try:
+            return float(cadence_name)
+        except ValueError:
+            raise ValueError(f"Invalid cadence name: {cadence_name}")
     return SUPPORTED_CADENCES.get(cadence_name)
 
 def get_seq_len(cadence_name: str) -> int:

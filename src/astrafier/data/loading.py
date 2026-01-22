@@ -14,6 +14,8 @@ from astropy.io import fits
 import lightkurve as lk
 from scipy.ndimage import gaussian_filter1d
 
+from .cadence import *
+
 QUALITY_FLAGS_KEEP: Tuple[int, ...] = (0, 64, 256, 1024, 2048, 8192)
 DEFAULT_SEQ_LEN = 1171
 
@@ -190,11 +192,20 @@ def load_training_catalog(
     seq_len: int = DEFAULT_SEQ_LEN,
     label_column: str = "label",
     path_column: str = "path",
+    cadence_filter: Optional[str] = None,
+    cadence_tolerance: float = 10,
     label_map: Optional[Dict[str, int]] = None,
 ) -> Tuple[TensorDataset, Dict[str, int]]:
     df = pd.read_csv(catalog_path)
     if df.empty:
         raise ValueError("Training catalog is empty")
+
+    # check if the cadence filter is valid
+    cadence_name = None
+    cadence_seconds = None
+    if cadence_filter is not None:
+        cadence_seconds = cadence_name_to_seconds(cadence_filter)
+        cadence_name = cadence_filter
 
     base_dir = catalog_path.parent
 
@@ -206,6 +217,8 @@ def load_training_catalog(
     label_indices: List[int] = []
 
     for _, row in df.iterrows():
+        
+
         label = row[label_column]
         if label not in label_map:
             raise ValueError(f"Unknown label '{label}' encountered. Known labels: {list(label_map)}")
@@ -221,8 +234,21 @@ def load_training_catalog(
         if not curve.mask.any():
             raise ValueError(f"Processed light curve is empty: {file_path}")
 
+        # apply cadence filter
+        if cadence_filter is not None:
+            cadence = _extract_cadence_only(file_path) or curve.cadence
+            if cadence is None: continue # cant detect cadence from file or curve
+            
+            if abs(cadence - cadence_seconds) > cadence_tolerance:
+                continue
+
+            
+
         fluxes.append(curve)
         label_indices.append(label_map[label])
+
+    if len(fluxes) == 0:
+        raise ValueError(f"No light curves found after applying cadence filter: {cadence_filter}")
 
     num_classes = len(label_map)
     one_hot = torch.nn.functional.one_hot(torch.tensor(label_indices), num_classes=num_classes).to(torch.float32)
