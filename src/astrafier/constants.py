@@ -1,5 +1,6 @@
 """Project-wide constants shared across training, inference, and utilities."""
 
+
 CLASS_NAMES = [
     "APERIODIC",
     "CONTACT_ROT",
@@ -12,5 +13,3 @@ CLASS_NAMES = [
 ]
 
 __all__ = ["CLASS_NAMES"]
-
-
