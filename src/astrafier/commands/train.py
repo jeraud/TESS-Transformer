@@ -65,7 +65,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--train-csv", type=Path, required=True, help="CSV with columns for labels and FITS paths")
     parser.add_argument("--label-column", type=str, default="label", help="Column name for class labels")
     parser.add_argument("--path-column", type=str, default="path", help="Column name containing FITS paths")
-    parser.add_argument("--seq-len", type=int, default=1171, help="Sequence length after preprocessing")
+    parser.add_argument("--seq-len", type=int, default=None, help="Sequence length after preprocessing")
     parser.add_argument("--batch-size", type=int, default=256, help="Batch size for training (default: %(default)s)")
     parser.add_argument("--max-epochs", type=int, default=150, help="Maximum number of training epochs")
     parser.add_argument("--min-epochs", type=int, default=5, help="Minimum number of training epochs")
