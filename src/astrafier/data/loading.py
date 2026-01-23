@@ -201,11 +201,9 @@ def load_training_catalog(
         raise ValueError("Training catalog is empty")
 
     # check if the cadence filter is valid
-    cadence_name = None
     cadence_seconds = None
     if cadence_filter is not None:
         cadence_seconds = cadence_name_to_seconds(cadence_filter)
-        cadence_name = cadence_filter
 
     base_dir = catalog_path.parent
 
@@ -247,7 +245,7 @@ def load_training_catalog(
         fluxes.append(curve)
         label_indices.append(label_map[label])
 
-    if len(fluxes) == 0:
+    if len(fluxes) == 0 and cadence_filter is not None:
         raise ValueError(f"No light curves found after applying cadence filter: {cadence_filter}")
 
     num_classes = len(label_map)

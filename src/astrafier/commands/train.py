@@ -16,6 +16,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.loggers import CSVLogger
 
+from astrafier.data.cadence import get_seq_len
 from astrafier.constants import CLASS_NAMES
 from astrafier.data.loading import load_training_catalog
 from astrafier.models import AstrafierModule
@@ -69,7 +70,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-epochs", type=int, default=150, help="Maximum number of training epochs")
     parser.add_argument("--min-epochs", type=int, default=5, help="Minimum number of training epochs")
     parser.add_argument("--precision", type=str, default="bf16-mixed", help="Precision to use in Lightning trainer")
-    parser.add_argument("--cadence", type=str, default="30min", help="Cadence to use for training (default: %(default)s)")
+    parser.add_argument("--cadence", type=str, default=None, help="Cadence to use for training (default: %(default)s)")
     parser.add_argument(
         "--strategy",
         type=str,
@@ -148,6 +149,7 @@ def build_datasets(
     dataset, label_map = load_training_catalog(
         args.train_csv,
         seq_len=args.seq_len,
+        cadence_filter=getattr(args, "cadence", None),
         label_column=args.label_column,
         path_column=args.path_column,
     )
@@ -199,6 +201,16 @@ def build_datasets(
 
 
 def run(args: argparse.Namespace) -> None:
+
+
+    if args.seq_len is None and args.cadence is not None:
+        args.seq_len = get_seq_len(args.cadence)
+    elif args.seq_len is None:
+        args.seq_len = 1171
+
+    if args.cadence is not None:
+        args.output_dir = args.output_dir / args.cadence
+
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -323,12 +335,12 @@ def add_parser(subparsers) -> None:
     parser.add_argument("--train-csv", type=Path, required=True, help="CSV with columns for labels and FITS paths")
     parser.add_argument("--label-column", type=str, default="label", help="Column name for class labels")
     parser.add_argument("--path-column", type=str, default="path", help="Column name with FITS paths")
-    parser.add_argument("--seq-len", type=int, default=1171, help="Sequence length after preprocessing")
+    parser.add_argument("--seq-len", type=int, default=None, help="Sequence length after preprocessing")
     parser.add_argument("--batch-size", type=int, default=256, help="Batch size for training (default: %(default)s)")
     parser.add_argument("--max-epochs", type=int, default=150, help="Maximum number of training epochs")
     parser.add_argument("--min-epochs", type=int, default=5, help="Minimum number of training epochs")
     parser.add_argument("--precision", type=str, default="bf16-mixed", help="Precision to use in Lightning trainer")
-    parser.add_argument("--cadence", type=str, default="30min", help="Cadence to use for training (default: %(default)s)")
+    parser.add_argument("--cadence", type=str, default=None, help="Cadence to use for training (default: %(default)s)")
     parser.add_argument(
         "--strategy",
         type=str,

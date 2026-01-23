@@ -22,4 +22,8 @@ def cadence_name_to_seconds(cadence_name: str) -> Optional[float]:
     return SUPPORTED_CADENCES.get(cadence_name)
 
 def get_seq_len(cadence_name: str) -> int:
-    return int (1171 * 1800 /SUPPORTED_CADENCES[cadence_name])
+    name = cadence_name_to_seconds(cadence_name)
+    name = seconds_to_cadence_name(name)
+    if name is None:
+        raise ValueError(f"Invalid cadence: {cadence_name}")
+    return int (1171 * 1800 /SUPPORTED_CADENCES[name])
