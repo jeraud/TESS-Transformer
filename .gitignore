@@ -14,3 +14,4 @@ legacy/
 *.egg-info/
 lightcurves_raw/
 .cursor/
+artifacts/

@@ -83,7 +83,7 @@ class AstrafierModule(pl.LightningModule):
 
         warmup = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lr_lambda)
         plateau = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            opt, factor=0.5, patience=5, verbose=True, min_lr=1e-6
+            opt, factor=0.5, patience=5, min_lr=1e-6
         )
 
         scheds: Iterable[dict[str, object]] = [
