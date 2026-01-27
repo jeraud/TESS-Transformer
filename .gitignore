@@ -12,3 +12,4 @@ legacy/
 .vscode/
 .github/
 *.egg-info/
+data/
