@@ -6,11 +6,19 @@ from .loading import (
     load_processed_lightcurve,
     QUALITY_FLAGS_KEEP,
 )
+from .multi_sector_loading import (
+    load_multi_sector_catalog,
+    MultiSectorDataset,
+    MultiSectorCurve,
+)
 
 __all__ = [
     "load_training_catalog",
     "load_inference_directory",
     "load_processed_lightcurve",
     "QUALITY_FLAGS_KEEP",
+    "load_multi_sector_catalog",
+    "MultiSectorDataset",
+    "MultiSectorCurve",
 ]
 

@@ -18,6 +18,7 @@ from pytorch_lightning.loggers import CSVLogger
 
 from astrafier.constants import CLASS_NAMES
 from astrafier.data.loading import load_training_catalog
+from astrafier.data.multi_sector_loading import load_multi_sector_catalog, MultiSectorDataset
 from astrafier.models import AstrafierModule
 from astrafier.utils.training import AccuracyLogger
 from huggingface_hub import hf_hub_download
@@ -135,6 +136,36 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         default=10,
         help="Number of Monte Carlo dropout samples to use when enabled (default: %(default)s)",
     )
+    parser.add_argument(
+        "--encoder-type",
+        type=str,
+        choices=["transformer", "state_space"],
+        default="transformer",
+        help="Encoder architecture: 'transformer' (original) or 'state_space' (S4-style) (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--multi-sector",
+        action="store_true",
+        help="Enable multi-sector mode: group samples by TIC ID and combine multiple sectors",
+    )
+    parser.add_argument(
+        "--max-sectors",
+        type=int,
+        default=None,
+        help="Maximum number of sectors per sample in multi-sector mode (default: no limit)",
+    )
+    parser.add_argument(
+        "--min-sectors",
+        type=int,
+        default=1,
+        help="Minimum number of sectors required per sample (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--tic-column",
+        type=str,
+        default="tic",
+        help="Column name for TIC ID in CSV (default: %(default)s). If not present, will extract from FITS.",
+    )
 
     args = parser.parse_args(argv)
     _validate_mc_dropout_args(parser, args.mc_dropout, args.mc_samples)
@@ -144,12 +175,24 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
 def build_datasets(
     args: argparse.Namespace,
 ) -> Tuple[Subset, Subset, Subset, torch.Tensor, Dict[str, int]]:
-    dataset, label_map = load_training_catalog(
-        args.train_csv,
-        seq_len=args.seq_len,
-        label_column=args.label_column,
-        path_column=args.path_column,
-    )
+    # Load dataset (single or multi-sector)
+    if args.multi_sector:
+        dataset, label_map = load_multi_sector_catalog(
+            args.train_csv,
+            seq_len=args.seq_len,
+            label_column=args.label_column,
+            path_column=args.path_column,
+            tic_column=args.tic_column if hasattr(args, 'tic_column') else "tic",
+            max_sectors=args.max_sectors if hasattr(args, 'max_sectors') else None,
+            min_sectors=args.min_sectors if hasattr(args, 'min_sectors') else 1,
+        )
+    else:
+        dataset, label_map = load_training_catalog(
+            args.train_csv,
+            seq_len=args.seq_len,
+            label_column=args.label_column,
+            path_column=args.path_column,
+        )
 
     _validate_splits(args.train_split, args.val_split, args.test_split)
 
@@ -157,7 +200,22 @@ def build_datasets(
     if num_samples < 3:
         raise ValueError("Training catalog must contain at least three samples to perform splitting.")
 
-    label_indices = torch.argmax(dataset.tensors[2], dim=1).cpu().numpy()
+    # Extract labels - handle both TensorDataset and MultiSectorDataset
+    if isinstance(dataset, MultiSectorDataset):
+        # Multi-sector dataset returns (flux, time, mask, label) tuples
+        # We need to extract labels differently
+        labels_list = []
+        for idx in range(num_samples):
+            _, _, _, label = dataset[idx]
+            if label is not None:
+                labels_list.append(label.argmax().item())
+            else:
+                labels_list.append(0)
+        label_indices = np.array(labels_list)
+    else:
+        # Standard TensorDataset
+        label_indices = torch.argmax(dataset.tensors[2], dim=1).cpu().numpy()
+    
     all_indices = np.arange(num_samples)
 
     if args.test_split > 0:
@@ -184,8 +242,23 @@ def build_datasets(
     else:
         train_idx, val_idx = train_val_idx, np.array([], dtype=np.int64)
 
-    train_indices_tensor = torch.as_tensor(train_idx, dtype=torch.long)
-    train_labels = dataset.tensors[2][train_indices_tensor]
+    # Compute class weights
+    if isinstance(dataset, MultiSectorDataset):
+        # Extract labels from multi-sector dataset
+        train_labels_list = []
+        for idx in train_idx:
+            _, _, _, label = dataset[idx]
+            if label is not None:
+                train_labels_list.append(label)
+            else:
+                # Create zero label if missing
+                num_classes = len(label_map)
+                train_labels_list.append(torch.zeros(num_classes))
+        train_labels = torch.stack(train_labels_list)
+    else:
+        train_indices_tensor = torch.as_tensor(train_idx, dtype=torch.long)
+        train_labels = dataset.tensors[2][train_indices_tensor]
+    
     class_counts = train_labels.sum(dim=0).clamp_min(1.0)
     total = max(1, train_labels.shape[0])
     class_weights = torch.full_like(class_counts, float(total)) / class_counts
@@ -222,6 +295,9 @@ def run(args: argparse.Namespace) -> None:
     )
     accuracy_logger = AccuracyLogger()
 
+    num_classes = len(label_map)
+    num_sectors = args.max_sectors if args.multi_sector and args.max_sectors else 1
+    
     if args.load_from_hf:
         pl.utilities.rank_zero_info(
             f"Loading model from HuggingFace Hub: {args.hf_repo_id}/{args.hf_filename}"
@@ -233,6 +309,10 @@ def run(args: argparse.Namespace) -> None:
             class_weight=class_weights,
             mc_dropout=args.mc_dropout,
             mc_samples=args.mc_samples,
+            encoder_type=args.encoder_type,
+            num_sectors=num_sectors,
+            num_classes=num_classes,
+            d_model=64,
         )
         pl.utilities.rank_zero_info(f"Loaded checkpoint from {ckpt_path}")
     else:
@@ -240,6 +320,10 @@ def run(args: argparse.Namespace) -> None:
             class_weight=class_weights,
             mc_dropout=args.mc_dropout,
             mc_samples=args.mc_samples,
+            encoder_type=args.encoder_type,
+            num_sectors=num_sectors,
+            num_classes=num_classes,
+            d_model=64,
         )
 
     logger = CSVLogger(save_dir=str(output_dir), name="lightning")
@@ -392,6 +476,36 @@ def add_parser(subparsers) -> None:
         type=int,
         default=10,
         help="Number of Monte Carlo dropout samples to use when enabled (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--encoder-type",
+        type=str,
+        choices=["transformer", "state_space"],
+        default="transformer",
+        help="Encoder architecture: 'transformer' (original) or 'state_space' (S4-style) (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--multi-sector",
+        action="store_true",
+        help="Enable multi-sector mode: group samples by TIC ID and combine multiple sectors",
+    )
+    parser.add_argument(
+        "--max-sectors",
+        type=int,
+        default=None,
+        help="Maximum number of sectors per sample in multi-sector mode (default: no limit)",
+    )
+    parser.add_argument(
+        "--min-sectors",
+        type=int,
+        default=1,
+        help="Minimum number of sectors required per sample (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--tic-column",
+        type=str,
+        default="tic",
+        help="Column name for TIC ID in CSV (default: %(default)s). If not present, will extract from FITS.",
     )
 
     parser.set_defaults(func=run)

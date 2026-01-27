@@ -13,6 +13,7 @@ from torchmetrics.classification import MulticlassConfusionMatrix
 
 from .head import ClassificationHead
 from .light_curve_classifier import LightCurveEncoder
+from .state_space_classifier import StateSpaceLightCurveEncoder
 
 
 class AstrafierModule(pl.LightningModule):
@@ -30,25 +31,46 @@ class AstrafierModule(pl.LightningModule):
         layers: int = 5,
         mc_dropout: bool = True,
         mc_samples: int = 10,
+        encoder_type: str = "transformer",  # "transformer" or "state_space"
+        num_sectors: int = 1,  # 1 for single-sector, >1 for multi-sector
+        num_classes: int = 8,
+        d_model: int = 64,
     ) -> None:
         super().__init__()
         self.save_hyperparameters(ignore=["class_weight"])
         self.layers = layers
-        transformer_kwargs = {
-            "emb": 64,
-            "heads": 8,
-            "layers": 3,
-            "dropout_p": 0.2,
-            "hidden": 256,
-            "num_classes": 8,
-        }
-        self.model = LightCurveEncoder(transformer_kwargs)
+        self.encoder_type = encoder_type
+        self.num_sectors = num_sectors
+        
+        if encoder_type == "state_space":
+            # State Space Model encoder
+            encoder_kwargs = {
+                "d_model": d_model,
+                "d_state": 64,
+                "num_layers": 3,
+                "dropout": 0.1,
+                "num_sectors": num_sectors,
+                "sector_combine": "mean",
+            }
+            self.model = StateSpaceLightCurveEncoder(encoder_kwargs=encoder_kwargs)
+        else:
+            # Transformer encoder (original)
+            transformer_kwargs = {
+                "emb": d_model,
+                "heads": 8,
+                "layers": 3,
+                "dropout_p": 0.2,
+                "hidden": 256,
+                "num_classes": num_classes,
+            }
+            self.model = LightCurveEncoder(transformer_kwargs)
+        
         self.head = ClassificationHead()
         self.loss_fn = nn.CrossEntropyLoss(weight=class_weight)
-        self.train_acc = torchmetrics.Accuracy(task="multiclass", num_classes=8)
-        self.val_acc = torchmetrics.Accuracy(task="multiclass", num_classes=8)
-        self.test_acc = torchmetrics.Accuracy(task="multiclass", num_classes=8)
-        self.conf_matrix = MulticlassConfusionMatrix(num_classes=8)
+        self.train_acc = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
+        self.val_acc = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
+        self.test_acc = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
+        self.conf_matrix = MulticlassConfusionMatrix(num_classes=num_classes)
         self.umap_embs: list[torch.Tensor] = []
         self.umap_labels: list[torch.Tensor] = []
         self.testmc: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
@@ -83,7 +105,7 @@ class AstrafierModule(pl.LightningModule):
 
         warmup = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lr_lambda)
         plateau = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            opt, factor=0.5, patience=5, verbose=True, min_lr=1e-6
+            opt, factor=0.5, patience=5, min_lr=1e-6
         )
 
         scheds: Iterable[dict[str, object]] = [
