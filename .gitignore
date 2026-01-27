@@ -12,4 +12,4 @@ legacy/
 .vscode/
 .github/
 *.egg-info/
-data/
+light_data/

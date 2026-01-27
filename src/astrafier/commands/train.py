@@ -17,7 +17,7 @@ from sklearn.model_selection import train_test_split
 from pytorch_lightning.loggers import CSVLogger
 
 from astrafier.constants import CLASS_NAMES
-from astrafier.data.loading import load_training_catalog
+from astrafier.data.loading_txt import load_training_catalog
 from astrafier.models import AstrafierModule
 from astrafier.utils.training import AccuracyLogger
 from huggingface_hub import hf_hub_download
