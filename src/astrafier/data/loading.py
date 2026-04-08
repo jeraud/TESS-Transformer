@@ -111,7 +111,7 @@ def _build_dataset_from_curves(curves: Sequence[LoadedCurve], labels: Optional[t
     if labels is not None:
         return TensorDataset(flux_stack, time_stack, labels, mask_stack)
 
-    ticids = torch.tensor([curve.ticid for curve in curves], dtype=torch.int32)
+    ticids = torch.tensor([curve.ticid for curve in curves], dtype=torch.int64)
     return TensorDataset(flux_stack, time_stack, ticids, mask_stack)
 
 

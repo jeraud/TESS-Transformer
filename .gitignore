@@ -1,14 +1,38 @@
+# Python
 __pycache__/
-legacy/
-*.ckpt
 *.py[cod]
 *.so
-.DS_Store
-.env
-.venv/
+*.egg-info/
+*.eggs/
 build/
 dist/
-legacy/
+.venv/
+venv/
+env/
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE/OS
+.DS_Store
 .vscode/
-.github/
-*.egg-info/
+.idea/
+*.swp
+*.swo
+
+# PyTorch/ML artifacts
+*.pt
+*.ckpt
+*.safetensors
+lightning_logs/
+
+# Data files
+*.fits
+*.csv
+
+# Logs
+*.log

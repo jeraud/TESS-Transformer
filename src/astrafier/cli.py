@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import Iterable
 
-from .commands import add_predict_parser, add_train_parser
+from .commands import add_predict_parser, add_preprocess_parser, add_split_parser, add_train_parser
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -13,6 +13,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_train_parser(subparsers)
     add_predict_parser(subparsers)
+    add_preprocess_parser(subparsers)
+    add_split_parser(subparsers)
     return parser
 
 

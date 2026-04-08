@@ -16,6 +16,8 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.loggers import CSVLogger
 
+import pandas as pd
+
 from astrafier.constants import CLASS_NAMES
 from astrafier.data.loading import load_training_catalog
 from astrafier.models import AstrafierModule
@@ -23,9 +25,92 @@ from astrafier.utils.training import AccuracyLogger
 from huggingface_hub import hf_hub_download
 
 DEFAULT_CLASS_NAMES = list(CLASS_NAMES)
-DEFAULT_TRAIN_SPLIT = 0.7
 DEFAULT_VAL_SPLIT = 0.1
 DEFAULT_TEST_SPLIT = 0.2
+DEFAULT_TRAIN_SPLIT = 1.0 - DEFAULT_VAL_SPLIT - DEFAULT_TEST_SPLIT
+
+
+def _load_tensor_file(path: Path) -> Dict[str, object]:
+    """Load tensors from .pt or .safetensors file."""
+    if path.suffix == ".safetensors":
+        from safetensors.torch import load_file
+        import json
+
+        tensors = load_file(path)
+        meta_path = path.with_suffix(".json")
+        if meta_path.exists():
+            with open(meta_path) as f:
+                meta = json.load(f)
+            tensors.update(meta)
+        return tensors
+    else:
+        return torch.load(path, weights_only=False)
+
+
+def load_preprocessed_tensors(
+    train_pt: Path, test_pt: Path, val_split: float, split_seed: int
+) -> Tuple[TensorDataset, TensorDataset, TensorDataset, torch.Tensor, Dict[str, int]]:
+    """Load pre-processed .pt or .safetensors files and create datasets.
+
+    Creates a validation split from the training data.
+    """
+    train_data = _load_tensor_file(train_pt)
+    test_data = _load_tensor_file(test_pt)
+
+    train_flux = train_data["flux"]
+    train_time = train_data["time"]
+    train_labels = train_data["labels"]
+    train_mask = train_data["mask"]
+    label_map = train_data["label_map"]
+
+    test_flux = test_data["flux"]
+    test_time = test_data["time"]
+    test_labels = test_data["labels"]
+    test_mask = test_data["mask"]
+
+    # Split training into train/val
+    num_train = len(train_flux)
+    indices = np.arange(num_train)
+    label_indices = torch.argmax(train_labels, dim=1).cpu().numpy()
+
+    if val_split > 0:
+        train_idx, val_idx = train_test_split(
+            indices,
+            test_size=val_split,
+            random_state=split_seed,
+            shuffle=True,
+            stratify=label_indices,
+        )
+    else:
+        train_idx = indices
+        val_idx = np.array([], dtype=np.int64)
+
+    # Create datasets
+    dataset_train = TensorDataset(
+        train_flux[train_idx],
+        train_time[train_idx],
+        train_labels[train_idx],
+        train_mask[train_idx],
+    )
+    dataset_val = TensorDataset(
+        train_flux[val_idx],
+        train_time[val_idx],
+        train_labels[val_idx],
+        train_mask[val_idx],
+    ) if len(val_idx) > 0 else TensorDataset(
+        torch.empty(0, train_flux.shape[1]),
+        torch.empty(0, train_time.shape[1]),
+        torch.empty(0, train_labels.shape[1]),
+        torch.empty(0, train_mask.shape[1], dtype=torch.bool),
+    )
+    dataset_test = TensorDataset(test_flux, test_time, test_labels, test_mask)
+
+    # Compute class weights from training set
+    class_counts = train_labels[train_idx].sum(dim=0).clamp_min(1.0)
+    total = max(1, len(train_idx))
+    class_weights = torch.full_like(class_counts, float(total)) / class_counts
+
+    return dataset_train, dataset_val, dataset_test, class_weights, label_map
 
 
 def make_dataloader(dataset: Subset | TensorDataset, batch_size: int, shuffle: bool) -> DataLoader:
@@ -61,12 +146,16 @@ def _validate_mc_dropout_args(
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the Astrafier model from FITS light curves.")
 
-    parser.add_argument("--train-csv", type=Path, required=True, help="CSV with columns for labels and FITS paths")
+    parser.add_argument("--train-csv", type=Path, help="CSV with label, path, and TIC columns (full pipeline)")
+    parser.add_argument("--train-pt", type=Path, help="Pre-processed training .pt file")
+    parser.add_argument("--test-pt", type=Path, help="Pre-processed test .pt file")
     parser.add_argument("--label-column", type=str, default="label", help="Column name for class labels")
     parser.add_argument("--path-column", type=str, default="path", help="Column name containing FITS paths")
+    parser.add_argument("--tic-column", type=str, default="TIC", help="Column name for TIC IDs (for TIC-based splitting)")
+    parser.add_argument("--save-preprocessed", type=Path, default=None, help="Save preprocessed tensors to this directory")
     parser.add_argument("--seq-len", type=int, default=1171, help="Sequence length after preprocessing")
-    parser.add_argument("--batch-size", type=int, default=256, help="Batch size for training (default: %(default)s)")
-    parser.add_argument("--max-epochs", type=int, default=150, help="Maximum number of training epochs")
+    parser.add_argument("--batch-size", type=int, default=128, help="Batch size for training (default: %(default)s)")
+    parser.add_argument("--max-epochs", type=int, default=250, help="Maximum number of training epochs")
     parser.add_argument("--min-epochs", type=int, default=5, help="Minimum number of training epochs")
     parser.add_argument("--precision", type=str, default="bf16-mixed", help="Precision to use in Lightning trainer")
     parser.add_argument(
@@ -132,18 +221,89 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--mc-samples",
         type=int,
-        default=10,
+        default=20,
         help="Number of Monte Carlo dropout samples to use when enabled (default: %(default)s)",
     )
 
     args = parser.parse_args(argv)
     _validate_mc_dropout_args(parser, args.mc_dropout, args.mc_samples)
+
+    # Validate data source arguments
+    has_pt = args.train_pt is not None or args.test_pt is not None
+    has_csv = args.train_csv is not None
+
+    if has_pt and has_csv:
+        parser.error("Cannot specify both --train-csv and --train-pt/--test-pt. Use one approach.")
+    if has_pt:
+        if args.train_pt is None or args.test_pt is None:
+            parser.error("Both --train-pt and --test-pt must be provided together.")
+    elif not has_csv:
+        parser.error("Must provide either --train-csv or --train-pt/--test-pt.")
+
     return args
 
 
-def build_datasets(
+def build_datasets_from_csv(
     args: argparse.Namespace,
-) -> Tuple[Subset, Subset, Subset, torch.Tensor, Dict[str, int]]:
+) -> Tuple[TensorDataset, TensorDataset, TensorDataset, torch.Tensor, Dict[str, int]]:
+    """Build datasets from CSV with train/test splitting.
+
+    If TIC column exists, splits by TIC to avoid data leakage.
+    Otherwise, falls back to row-based splitting with a warning.
+    """
+    df = pd.read_csv(args.train_csv)
+
+    tic_col = args.tic_column
+    label_col = args.label_column
+    use_tic_split = tic_col in df.columns
+
+    if use_tic_split:
+        # TIC-based splitting (recommended)
+        tic_labels = df.groupby(tic_col)[label_col].agg(lambda x: x.mode().iloc[0]).reset_index()
+        unique_tics = tic_labels[tic_col].values
+        labels_for_stratify = tic_labels[label_col].values
+
+        train_tics, test_tics = train_test_split(
+            unique_tics,
+            test_size=args.test_split,
+            random_state=args.split_seed,
+            shuffle=True,
+            stratify=labels_for_stratify,
+        )
+
+        train_tic_set = set(train_tics)
+        test_tic_set = set(test_tics)
+
+        overlap = train_tic_set & test_tic_set
+        if overlap:
+            raise RuntimeError(f"BUG: Found {len(overlap)} overlapping TICs")
+
+        print(f"TIC-based split: {len(train_tics)} train TICs, {len(test_tics)} test TICs (zero overlap)")
+
+        train_rows = df[df[tic_col].isin(train_tic_set)].index.tolist()
+        test_rows = df[df[tic_col].isin(test_tic_set)].index.tolist()
+    else:
+        # Row-based splitting (fallback)
+        print(
+            f"WARNING: No '{tic_col}' column found. Using row-based splitting. "
+            f"If the same source appears multiple times, this may cause data leakage."
+        )
+        labels_for_stratify = df[label_col].values
+        all_indices = np.arange(len(df))
+
+        train_rows, test_rows = train_test_split(
+            all_indices,
+            test_size=args.test_split,
+            random_state=args.split_seed,
+            shuffle=True,
+            stratify=labels_for_stratify,
+        )
+        train_rows = train_rows.tolist()
+        test_rows = test_rows.tolist()
+
+    print(f"Row counts: {len(train_rows)} train, {len(test_rows)} test")
+
+    # Load and preprocess all data
     dataset, label_map = load_training_catalog(
         args.train_csv,
         seq_len=args.seq_len,
@@ -151,53 +311,107 @@ def build_datasets(
         path_column=args.path_column,
     )
 
-    _validate_splits(args.train_split, args.val_split, args.test_split)
+    # Extract tensors for train split
+    train_flux = dataset.tensors[0][train_rows]
+    train_time = dataset.tensors[1][train_rows]
+    train_labels_tensor = dataset.tensors[2][train_rows]
+    train_mask_tensor = dataset.tensors[3][train_rows]
 
-    num_samples = len(dataset)
-    if num_samples < 3:
-        raise ValueError("Training catalog must contain at least three samples to perform splitting.")
+    # Extract tensors for test split
+    test_flux = dataset.tensors[0][test_rows]
+    test_time = dataset.tensors[1][test_rows]
+    test_labels_tensor = dataset.tensors[2][test_rows]
+    test_mask_tensor = dataset.tensors[3][test_rows]
 
-    label_indices = torch.argmax(dataset.tensors[2], dim=1).cpu().numpy()
-    all_indices = np.arange(num_samples)
+    # Carve validation from training (by row, within train TICs - this is fine)
+    num_train = len(train_rows)
+    indices = np.arange(num_train)
+    label_indices = torch.argmax(train_labels_tensor, dim=1).cpu().numpy()
 
-    if args.test_split > 0:
-        train_val_idx, test_idx = train_test_split(
-            all_indices,
-            test_size=args.test_split,
+    if args.val_split > 0:
+        actual_train_idx, val_idx = train_test_split(
+            indices,
+            test_size=args.val_split,
             random_state=args.split_seed,
             shuffle=True,
             stratify=label_indices,
         )
     else:
-        train_val_idx, test_idx = all_indices, np.array([], dtype=np.int64)
+        actual_train_idx = indices
+        val_idx = np.array([], dtype=np.int64)
 
-    if args.val_split > 0:
-        val_fraction = args.val_split / (args.train_split + args.val_split)
-        stratify_val = label_indices[train_val_idx]
-        train_idx, val_idx = train_test_split(
-            train_val_idx,
-            test_size=val_fraction,
-            random_state=args.split_seed,
-            shuffle=True,
-            stratify=stratify_val,
+    # Create final datasets
+    dataset_train = TensorDataset(
+        train_flux[actual_train_idx],
+        train_time[actual_train_idx],
+        train_labels_tensor[actual_train_idx],
+        train_mask_tensor[actual_train_idx],
+    )
+
+    if len(val_idx) > 0:
+        dataset_val = TensorDataset(
+            train_flux[val_idx],
+            train_time[val_idx],
+            train_labels_tensor[val_idx],
+            train_mask_tensor[val_idx],
         )
     else:
-        train_idx, val_idx = train_val_idx, np.array([], dtype=np.int64)
+        dataset_val = TensorDataset(
+            torch.empty(0, train_flux.shape[1]),
+            torch.empty(0, train_time.shape[1]),
+            torch.empty(0, train_labels_tensor.shape[1]),
+            torch.empty(0, train_mask_tensor.shape[1], dtype=torch.bool),
+        )
 
-    train_indices_tensor = torch.as_tensor(train_idx, dtype=torch.long)
-    train_labels = dataset.tensors[2][train_indices_tensor]
-    class_counts = train_labels.sum(dim=0).clamp_min(1.0)
-    total = max(1, train_labels.shape[0])
+    dataset_test = TensorDataset(test_flux, test_time, test_labels_tensor, test_mask_tensor)
+
+    # Compute class weights from training set
+    class_counts = train_labels_tensor[actual_train_idx].sum(dim=0).clamp_min(1.0)
+    total = max(1, len(actual_train_idx))
     class_weights = torch.full_like(class_counts, float(total)) / class_counts
 
-    dataset_train = Subset(dataset, train_idx.tolist())
-    dataset_val = Subset(dataset, val_idx.tolist())
-    dataset_test = Subset(dataset, test_idx.tolist())
+    # Optionally save preprocessed tensors
+    if args.save_preprocessed is not None:
+        save_dir = args.save_preprocessed.resolve()
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save train (includes val, before val split)
+        torch.save({
+            "flux": train_flux,
+            "time": train_time,
+            "labels": train_labels_tensor,
+            "mask": train_mask_tensor,
+            "label_map": label_map,
+            "seq_len": args.seq_len,
+        }, save_dir / "train.pt")
+
+        torch.save({
+            "flux": test_flux,
+            "time": test_time,
+            "labels": test_labels_tensor,
+            "mask": test_mask_tensor,
+            "label_map": label_map,
+            "seq_len": args.seq_len,
+        }, save_dir / "test.pt")
+
+        print(f"Saved preprocessed tensors to {save_dir}/train.pt and {save_dir}/test.pt")
 
     return dataset_train, dataset_val, dataset_test, class_weights, label_map
 
 
 def run(args: argparse.Namespace) -> None:
+    # Validate data source arguments
+    has_pt = getattr(args, "train_pt", None) is not None or getattr(args, "test_pt", None) is not None
+    has_csv = getattr(args, "train_csv", None) is not None
+
+    if has_pt and has_csv:
+        raise ValueError("Cannot specify both --train-csv and --train-pt/--test-pt. Use one approach.")
+    if has_pt:
+        if getattr(args, "train_pt", None) is None or getattr(args, "test_pt", None) is None:
+            raise ValueError("Both --train-pt and --test-pt must be provided together.")
+    elif not has_csv:
+        raise ValueError("Must provide either --train-csv or --train-pt/--test-pt.")
+
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -206,7 +420,12 @@ def run(args: argparse.Namespace) -> None:
     torch.set_float32_matmul_precision("high")
     pl.seed_everything(42, workers=True)
 
-    dataset_train, dataset_val, dataset_test, class_weights, label_map = build_datasets(args)
+    if args.train_pt is not None:
+        dataset_train, dataset_val, dataset_test, class_weights, label_map = load_preprocessed_tensors(
+            args.train_pt, args.test_pt, args.val_split, args.split_seed
+        )
+    else:
+        dataset_train, dataset_val, dataset_test, class_weights, label_map = build_datasets_from_csv(args)
     train_loader = make_dataloader(dataset_train, args.batch_size, shuffle=True)
     val_loader = make_dataloader(dataset_val, args.batch_size, shuffle=False)
     test_loader = make_dataloader(dataset_test, args.batch_size, shuffle=False)
@@ -319,12 +538,16 @@ def main(argv: Iterable[str] | None = None) -> None:
 
 def add_parser(subparsers) -> None:
     parser = subparsers.add_parser("train", help="Train the Astrafier model from FITS light curves")
-    parser.add_argument("--train-csv", type=Path, required=True, help="CSV with columns for labels and FITS paths")
+    parser.add_argument("--train-csv", type=Path, help="CSV with columns for labels and FITS paths")
+    parser.add_argument("--train-pt", type=Path, help="Pre-processed training .pt file (from astrafier preprocess)")
+    parser.add_argument("--test-pt", type=Path, help="Pre-processed test .pt file (from astrafier preprocess)")
     parser.add_argument("--label-column", type=str, default="label", help="Column name for class labels")
     parser.add_argument("--path-column", type=str, default="path", help="Column name with FITS paths")
+    parser.add_argument("--tic-column", type=str, default="TIC", help="Column name for TIC IDs (for TIC-based splitting)")
+    parser.add_argument("--save-preprocessed", type=Path, default=None, help="Save preprocessed tensors to this directory")
     parser.add_argument("--seq-len", type=int, default=1171, help="Sequence length after preprocessing")
-    parser.add_argument("--batch-size", type=int, default=256, help="Batch size for training (default: %(default)s)")
-    parser.add_argument("--max-epochs", type=int, default=150, help="Maximum number of training epochs")
+    parser.add_argument("--batch-size", type=int, default=128, help="Batch size for training (default: %(default)s)")
+    parser.add_argument("--max-epochs", type=int, default=250, help="Maximum number of training epochs")
     parser.add_argument("--min-epochs", type=int, default=5, help="Minimum number of training epochs")
     parser.add_argument("--precision", type=str, default="bf16-mixed", help="Precision to use in Lightning trainer")
     parser.add_argument(
@@ -390,7 +613,7 @@ def add_parser(subparsers) -> None:
     parser.add_argument(
         "--mc-samples",
         type=int,
-        default=10,
+        default=20,
         help="Number of Monte Carlo dropout samples to use when enabled (default: %(default)s)",
     )
 

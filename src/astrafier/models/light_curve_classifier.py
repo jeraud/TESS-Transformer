@@ -20,8 +20,8 @@ class LightCurveEncoder(nn.Module):
             "emb": 64,
             "heads": 8,
             "layers": 3,
-            "dropout_p": 0.1,
-            "hidden": 512,
+            "dropout_p": 0.2,
+            "hidden": 256,
             "num_classes": 8,
         }
         self.classifier = LCC(

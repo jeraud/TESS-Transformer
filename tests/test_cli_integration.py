@@ -36,7 +36,7 @@ def test_train_cli_smoke(tmp_path, monkeypatch):
     _make_fits(file2, ticid=5678)
 
     paths = [file1.relative_to(tmp_path)] * 10 + [file2.relative_to(tmp_path)] * 10
-    labels = ["APERIODIC"] * 10 + ["CONTACT"] * 10
+    labels = ["APERIODIC"] * 10 + ["CONTACT_ROT"] * 10
 
     train_csv = tmp_path / "train.csv"
     pd.DataFrame(
@@ -48,8 +48,12 @@ def test_train_cli_smoke(tmp_path, monkeypatch):
 
     args = SimpleNamespace(
         train_csv=train_csv,
+        train_pt=None,
+        test_pt=None,
         label_column="label",
         path_column="path",
+        tic_column="TIC",
+        save_preprocessed=None,
         seq_len=64,
         batch_size=4,
         max_epochs=1,
@@ -65,7 +69,7 @@ def test_train_cli_smoke(tmp_path, monkeypatch):
         hf_repo_id="stub/repo",
         hf_filename="model.ckpt",
         mc_dropout=True,
-        mc_samples=10,
+        mc_samples=20,
     )
 
     best_ckpt = tmp_path / "best.ckpt"

@@ -39,7 +39,7 @@ def test_load_training_catalog(tmp_path):
     catalog = tmp_path / "train.csv"
     pd.DataFrame(
         {
-            "label": ["APERIODIC", "CONTACT"],
+            "label": ["APERIODIC", "CONTACT_ROT"],
             "path": [file1.relative_to(tmp_path), file2.relative_to(tmp_path)],
         }
     ).to_csv(catalog, index=False)
@@ -51,7 +51,7 @@ def test_load_training_catalog(tmp_path):
     assert flux.shape == (1171,)
     assert time.shape == (1171,)
     assert mask.dtype == torch.bool and mask.any()
-    assert set(label_map.keys()) == {"APERIODIC", "CONTACT"}
+    assert set(label_map.keys()) == {"APERIODIC", "CONTACT_ROT"}
 
 
 def test_load_inference_directory(tmp_path):
@@ -65,7 +65,7 @@ def test_load_inference_directory(tmp_path):
     assert len(dataset) == 2
     flux, time, tic, mask = dataset[0]
     assert flux.shape == (1171,)
-    assert tic.dtype == torch.int32
+    assert tic.dtype == torch.int64
     assert mask.dtype == torch.bool
 
 

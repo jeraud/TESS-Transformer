@@ -13,10 +13,10 @@ class ClassificationHead(nn.Module):
             nn.Linear(64, 128),
             nn.LayerNorm(normalized_shape=128),
             nn.SiLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(0.2),
             nn.Linear(128, 32),
             nn.SiLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(0.2),
             nn.Linear(32, 8),
         )
 

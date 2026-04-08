@@ -6,7 +6,7 @@ CLASS_NAMES = [
     "DSCT_BCEP",
     "ECLIPSE",
     "GDOR_SPB",
-    "JUNK",
+    "INSTRUMENT/JUNK",
     "RRLYR_CEPH",
     "SOLARLIKE",
 ]

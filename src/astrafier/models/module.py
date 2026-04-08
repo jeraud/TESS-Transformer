@@ -29,7 +29,7 @@ class AstrafierModule(pl.LightningModule):
         class_weight: Optional[torch.Tensor] = None,
         layers: int = 5,
         mc_dropout: bool = True,
-        mc_samples: int = 10,
+        mc_samples: int = 20,
     ) -> None:
         super().__init__()
         self.save_hyperparameters(ignore=["class_weight"])
@@ -54,7 +54,7 @@ class AstrafierModule(pl.LightningModule):
         self.testmc: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.mc_dropout_enabled = mc_dropout
         self.mc_samples = max(1, mc_samples)
-        self._mc_dropout_rate = 0.3
+        self._mc_dropout_rate = 0.2
         self._mc_dropout_layers: list[nn.Dropout] = []
         self._mc_original_p: list[float] = []
         self._collect_dropout_layers()
@@ -73,7 +73,7 @@ class AstrafierModule(pl.LightningModule):
                 {"params": self.model.parameters(), "lr": 1e-4},
                 {"params": self.head.parameters(), "lr": 1e-3},
             ],
-            weight_decay=2e-4,
+            weight_decay=1e-5,
             betas=(0.9, 0.95),
         )
 

@@ -4,19 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "astrafier"
-version = "0.1.0"
-description = "Light-curve classifier for TESS wavelet experiments"
+version = "1.0.0"
+description = "Light-curve classifier for TESS"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "astropy",
   "Bottleneck",
+  "huggingface_hub",
   "lightkurve",
   "matplotlib",
   "numpy",
   "pandas",
   "pytorch-lightning",
   "PyYAML",
+  "safetensors",
   "scikit-learn",
   "scipy",
   "torch",
