@@ -166,3 +166,7 @@ src/astrafier/
 ```bash
 pytest
 ```
+
+## Data and Model
+- **Training data:** [Hugging Face dataset](https://huggingface.co/datasets/paulg9/astrafier_dataset) — DOI [10.57967/hf/9082](https://doi.org/10.57967/hf/9082)
+- **Trained model:** [Hugging Face model](https://huggingface.co/paulg9/astrafier)
