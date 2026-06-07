@@ -29,7 +29,12 @@ Download the paper's training data from HuggingFace (includes TESS and Kepler li
 from huggingface_hub import hf_hub_download
 
 for f in ["train.safetensors", "train.json", "test.safetensors", "test.json"]:
-    hf_hub_download("paulg9/astrafier", f, local_dir="./data")
+    hf_hub_download(
+        repo_id="paulg9/astrafier_dataset",
+        filename=f,
+        repo_type="dataset",
+        local_dir="./data",
+    )
 ```
 
 Fine-tune from our checkpoint:
