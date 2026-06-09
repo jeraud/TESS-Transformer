@@ -170,3 +170,24 @@ pytest
 ## Data and Model
 - **Training data:** [Hugging Face dataset](https://huggingface.co/datasets/paulg9/astrafier_dataset) — DOI [10.57967/hf/9082](https://doi.org/10.57967/hf/9082)
 - **Trained model:** [Hugging Face model](https://huggingface.co/paulg9/astrafier)
+
+## Citation
+
+ASTRAFier: A Novel and Scalable Transformer-based Stellar Variability Classifier
+
+Paul F. X. Gregory, Jeroen Audenaert, Mykyta Kliapets, Daniel Muthukrishna, Andrew Tkachenko, Marek Skarka, Marc Hon, George R. Ricker
+
+https://arxiv.org/abs/2604.07437
+
+
+```bash
+@misc{gregory2026astrafiernovelscalabletransformerbased,
+      title={ASTRAFier: A Novel and Scalable Transformer-based Stellar Variability Classifier}, 
+      author={Paul F. X. Gregory and Jeroen Audenaert and Mykyta Kliapets and Daniel Muthukrishna and Andrew Tkachenko and Marek Skarka and Marc Hon and George R. Ricker},
+      year={2026},
+      eprint={2604.07437},
+      archivePrefix={arXiv},
+      primaryClass={astro-ph.IM},
+      url={https://arxiv.org/abs/2604.07437}, 
+}
+```
